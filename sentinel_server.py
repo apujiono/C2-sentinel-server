@@ -18,10 +18,10 @@ MAX_REPORTS = 1000
 TELEGRAM_ENABLED = False
 
 # HiveMQ Config
-MQTT_HOST = os.getenv("MQTT_HOST", "5374fec8494a4a24add8bb27fe4ddae5.s1.eu.hivemq.cloud")  # Ganti dengan milikmu dari dashboard HiveMQ Cloud
+MQTT_HOST = os.getenv("MQTT_HOST", "7cbb273c574b493a8707b743f5641f33.s1.eu.hivemq.cloud")  # Ganti dengan milikmu dari dashboard HiveMQ Cloud
 MQTT_PORT = int(os.getenv("MQTT_PORT", 8883))
-MQTT_USERNAME = os.getenv("MQTT_USERNAME", "throng_user")
-MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "TherongPass123")
+MQTT_USERNAME = os.getenv("MQTT_USERNAME", "Sentinel_admin")
+MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "SentinelPass123")
 MQTT_TOPIC_CMD = "c2/agent/+/cmd"      # Wildcard untuk semua agent
 MQTT_TOPIC_REPORT = "c2/agent/+/report"
 
