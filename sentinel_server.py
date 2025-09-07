@@ -5,7 +5,7 @@ import base64
 import threading
 import time
 from datetime import datetime, timedelta
-import random  # Untuk demo AI
+import random
 
 # === CONFIG ===
 XOR_KEY = os.getenv("XOR_KEY", "sentinel")
@@ -13,9 +13,18 @@ REPORT_FILE = "data/reports.json"
 COMMAND_EXPIRY = 300
 TELEGRAM_ENABLED = False
 
+# Auto-create folder
 if not os.path.exists("data"):
     os.makedirs("data")
-if not os.path.exists(REPORT_FILE):
+
+# Auto-create reports.json if not exists or corrupt
+try:
+    with open(REPORT_FILE, "r") as f:
+        reports = json.load(f)
+    if not isinstance(reports, list):
+        raise ValueError("Not a list")
+except:
+    print("[!] reports.json tidak ada atau corrupt. Membuat baru...")
     with open(REPORT_FILE, "w") as f:
         json.dump([], f)
 
@@ -60,55 +69,60 @@ def cleanup_expired_commands():
 
 threading.Thread(target=cleanup_expired_commands, daemon=True).start()
 
-# === AI ANALYSIS ENGINE ===
+# === AI ANALYSIS ENGINE — FIXED! ===
 def ai_analyze_reports(reports):
     """
-    AI sederhana untuk analisis laporan.
-    Bisa diganti dengan model NLP beneran (misal: Hugging Face) di versi lanjut.
+    AI sederhana untuk analisis laporan — SELALU RETURN STRUKTUR LENGKAP.
     """
-    total = len(reports)
-    if total == 0:
-        return {"summary": "Belum ada data untuk dianalisis.", "high_severity": 0, "types": {}}
+    try:
+        total = len(reports)
+        high_count = 0
+        issue_types = {}
+        targets = {}
+        last_24h = 0
+        now = datetime.now()
 
-    high_count = 0
-    issue_types = {}
-    targets = {}
-    last_24h = 0
-    now = datetime.now()
+        if total > 0:
+            for r in reports:
+                if is_high_severity(r):
+                    high_count += 1
 
-    for r in reports:
-        # Hitung high severity
-        if is_high_severity(r):
-            high_count += 1
+                issue = r.get("issue", "Unknown")
+                issue_types[issue] = issue_types.get(issue, 0) + 1
 
-        # Kelompokkan issue type
-        issue = r.get("issue", "Unknown")
-        issue_types[issue] = issue_types.get(issue, 0) + 1
+                target = r.get("target", "Unknown")
+                targets[target] = targets.get(target, 0) + 1
 
-        # Kelompokkan target
-        target = r.get("target", "Unknown")
-        targets[target] = targets.get(target, 0) + 1
+                try:
+                    ts = datetime.fromisoformat(r.get("timestamp", ""))
+                    if (now - ts).total_seconds() < 86400:
+                        last_24h += 1
+                except:
+                    pass
 
-        # Hitung laporan 24 jam terakhir
-        try:
-            ts = datetime.fromisoformat(r.get("timestamp", ""))
-            if (now - ts).total_seconds() < 86400:
-                last_24h += 1
-        except:
-            pass
+        if total == 0:
+            summary = """📊 **AI INSIGHT REPORT**
+========================
+Belum ada data untuk dianalisis.
 
-    # Buat ringkasan
-    top_issue = max(issue_types, key=issue_types.get) if issue_types else "None"
-    top_target = max(targets, key=targets.get) if targets else "None"
+💡 Rekomendasi AI:
+- Deploy lebih banyak agent.
+- Pastikan agent bisa beacon ke server.
+- Periksa koneksi jaringan dan C2 endpoint."""
+            top_issue = "None"
+            top_target = "None"
+        else:
+            top_issue = max(issue_types, key=issue_types.get) if issue_types else "None"
+            top_target = max(targets, key=targets.get) if targets else "None"
 
-    summary = f"""
+            summary = f"""
 📊 **AI INSIGHT REPORT**
 ========================
 Total Laporan: {total}
 High Severity: {high_count}
 Laporan 24 Jam Terakhir: {last_24h}
 
-🔥 Issue Terbanyak: {top_issue} ({issue_types[top_issue]} laporan)
+🔥 Issue Terbanyak: {top_issue} ({issue_types.get(top_issue, 0)} laporan)
 🎯 Target Terbanyak: {top_target}
 
 💡 Rekomendasi AI:
@@ -120,16 +134,27 @@ Laporan 24 Jam Terakhir: {last_24h}
     "Agent aktif stabil — pertahankan jadwal beacon.",
     "Tingkatkan frekuensi scan untuk deteksi lebih cepat."
 ])}
-    """
+            """
 
-    return {
-        "summary": summary.strip(),
-        "high_severity": high_count,
-        "total": total,
-        "last_24h": last_24h,
-        "issue_types": issue_types,
-        "targets": targets
-    }
+        return {
+            "summary": summary.strip(),
+            "high_severity": high_count,
+            "total": total,
+            "last_24h": last_24h,
+            "issue_types": issue_types,
+            "targets": targets
+        }
+
+    except Exception as e:
+        print(f"[AI ANALYSIS ERROR] {e}")
+        return {
+            "summary": "❌ Error dalam analisis AI. Periksa format laporan.",
+            "high_severity": 0,
+            "total": 0,
+            "last_24h": 0,
+            "issue_types": {},
+            "targets": {}
+        }
 
 # === TRACK CHECKINS UNTUK GRAFIK ===
 def track_agent_checkins():
@@ -139,7 +164,7 @@ def track_agent_checkins():
         online_now = sum(1 for agent_id in AGENT_LAST_SEEN.keys()
                         if (now - AGENT_LAST_SEEN[agent_id]).total_seconds() < 300)
         AGENT_CHECKINS.append({"time": minute_key, "online": online_now})
-        if len(AGENT_CHECKINS) > 60:  # Simpan 60 menit terakhir
+        if len(AGENT_CHECKINS) > 60:
             AGENT_CHECKINS.pop(0)
         time.sleep(60)
 
@@ -203,7 +228,6 @@ def get_dashboard_template():
         </div>
 
         <script>
-            // Auto-refresh agents & logs setiap 5 detik
             setInterval(() => {
                 if(['/logs', '/agents', '/'].includes(window.location.pathname)) {
                     location.reload();
@@ -226,12 +250,20 @@ def home():
         else:
             AGENT_STATUS[agent_id] = "offline"
 
-    # Load reports & analisis AI
-    with open(REPORT_FILE, "r") as f:
-        reports = json.load(f)
+    # Load & analyze reports
+    try:
+        with open(REPORT_FILE, "r") as f:
+            reports = json.load(f)
+        if not isinstance(reports, list):
+            raise ValueError("Invalid format")
+    except:
+        reports = []
+        with open(REPORT_FILE, "w") as f:
+            json.dump([], f)
+
     ai_insight = ai_analyze_reports(reports)
 
-    # Siapkan data untuk grafik
+    # Prepare chart data
     chart_labels = [item["time"] for item in AGENT_CHECKINS]
     chart_data = [item["online"] for item in AGENT_CHECKINS]
 
@@ -275,11 +307,11 @@ def home():
         const ctx = document.getElementById('agentChart').getContext('2d');
         new Chart(ctx, {{
             type: 'line',
-            data: {{
+             {{
                 labels: {json.dumps(chart_labels)},
                 datasets: [{{
                     label: 'Agent Online',
-                    data: {json.dumps(chart_data)},
+                     {json.dumps(chart_data)},
                     borderColor: '#00ff00',
                     backgroundColor: 'rgba(0, 255, 0, 0.1)',
                     tension: 0.4
@@ -311,19 +343,22 @@ def home():
 
 @app.route('/analytics')
 def analytics():
-    with open(REPORT_FILE, "r") as f:
-        reports = json.load(f)
+    try:
+        with open(REPORT_FILE, "r") as f:
+            reports = json.load(f)
+        if not isinstance(reports, list):
+            reports = []
+    except:
+        reports = []
+
     ai_insight = ai_analyze_reports(reports)
 
-    # Grafik Issue Types
     issue_labels = list(ai_insight["issue_types"].keys())
     issue_data = list(ai_insight["issue_types"].values())
 
-    # Grafik Targets
-    target_labels = list(ai_insight["targets"].keys())[:10]  # Top 10
+    target_labels = list(ai_insight["targets"].keys())[:10]
     target_data = list(ai_insight["targets"].values())[:10]
 
-    # Data Agent Checkins
     chart_labels = [item["time"] for item in AGENT_CHECKINS]
     chart_data = [item["online"] for item in AGENT_CHECKINS]
 
@@ -358,15 +393,13 @@ def analytics():
     </div>
 
     <script>
-        // Issue Chart
         const issueCtx = document.getElementById('issueChart').getContext('2d');
         new Chart(issueCtx, {{
             type: 'bar',
-            data: {{
+             {{
                 labels: {json.dumps(issue_labels)},
                 datasets: [{{
-                    label: 'Jumlah Laporan',
-                    data: {json.dumps(issue_data)},
+                     {json.dumps(issue_data)},
                     backgroundColor: 'rgba(0, 255, 0, 0.5)',
                     borderColor: '#00ff00',
                     borderWidth: 1
@@ -384,14 +417,13 @@ def analytics():
             }}
         }});
 
-        // Target Chart
         const targetCtx = document.getElementById('targetChart').getContext('2d');
         new Chart(targetCtx, {{
             type: 'pie',
-            data: {{
+             {{
                 labels: {json.dumps(target_labels)},
                 datasets: [{{
-                    data: {json.dumps(target_data)},
+                     {json.dumps(target_data)},
                     backgroundColor: [
                         'rgba(0, 255, 0, 0.7)',
                         'rgba(0, 200, 0, 0.7)',
@@ -414,11 +446,10 @@ def analytics():
             }}
         }});
 
-        // Agent Trend Chart
         const trendCtx = document.getElementById('agentTrendChart').getContext('2d');
         new Chart(trendCtx, {{
             type: 'line',
-            data: {{
+             {{
                 labels: {json.dumps(chart_labels)},
                 datasets: [{{
                     label: 'Agent Online',
@@ -443,7 +474,7 @@ def analytics():
     '''
     return render_template_string(get_dashboard_template(), content=content, agents_online=sum(1 for s in AGENT_STATUS.values() if s == "online"))
 
-# === Routes lainnya tetap sama ===
+# === Routes lainnya tetap sama (tidak diubah) ===
 @app.route('/agents')
 def agents_live():
     now = datetime.now()
@@ -617,18 +648,20 @@ def beacon():
         data["timestamp"] = datetime.now().isoformat()
         data["beacon_ip"] = request.remote_addr
 
-        # Update last seen
         AGENT_LAST_SEEN[agent_id] = datetime.now()
 
-        # Simpan laporan
         with open(REPORT_FILE, "r+") as f:
-            reports = json.load(f)
+            try:
+                reports = json.load(f)
+                if not isinstance(reports, list):
+                    reports = []
+            except:
+                reports = []
             reports.append(data)
             f.seek(0)
             json.dump(reports, f, indent=2, ensure_ascii=False)
             f.truncate()
 
-        # AI Filter & Alert
         if is_high_severity(data):
             alert = f"🚨 <b>BUG KRITIS DITEMUKAN!</b>\n"
             alert += f"🆔 Agent: {agent_id}\n"
@@ -638,7 +671,6 @@ def beacon():
             alert += f"🕒 Waktu: {data['timestamp']}"
             send_alert(alert)
 
-        # Kirim perintah
         cmd = ACTIVE_COMMANDS.get(agent_id, {"cmd": "idle"})
         if agent_id in ACTIVE_COMMANDS:
             del ACTIVE_COMMANDS[agent_id]
@@ -659,8 +691,9 @@ def update():
 
 # === RUN ===
 if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 8000))  # ← SUPPORT RAILWAY!
     print("🚀 C2 SENTINEL v6 - AI INSIGHT + REALTIME GRAPH")
-    print("🌐 Running on http://0.0.0.0:8000")
+    print(f"🌐 Running on http://0.0.0.0:{port}")
     print("🔐 XOR Key: 'sentinel'")
     print("📊 Buka browser dan akses dashboard!")
-    app.run(host='0.0.0.0', port=8000, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False)
