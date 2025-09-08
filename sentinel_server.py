@@ -136,10 +136,10 @@ Aktivitas 1 Jam: {last_hour}
     "Periksa exfiltration di host yang jarang beacon",
     "Aktifkan mode silent untuk infiltrasi mendalam",
     "Luncurkan 'web_swarm_only' untuk infeksi website",
-    "Gunakan 'hardware_control' untuk infiltrasi fisik"  # ✅ BARU
+    "Gunakan 'hardware_control' untuk infiltrasi fisik"   
 ])}
 - Risk Score > 80? Segera isolasi jaringan!
-        f"""
+        """
 
         return {
             "summary": summary.strip(),
@@ -148,7 +148,7 @@ Aktivitas 1 Jam: {last_hour}
             "auto_command": auto_command,
             "swarm_agents": swarm_agents,
             "web_zombies": web_zombies,
-            "hardware_targets": hardware_targets  # ✅ BARU
+            "hardware_targets": hardware_targets   
         }
     except Exception as e:
         print(f"[NEURAL AI ERROR] {e}")
