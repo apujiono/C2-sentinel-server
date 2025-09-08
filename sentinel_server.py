@@ -139,7 +139,7 @@ Aktivitas 1 Jam: {last_hour}
     "Gunakan 'hardware_control' untuk infiltrasi fisik"  # ✅ BARU
 ])}
 - Risk Score > 80? Segera isolasi jaringan!
-        
+        """
 
         return {
             "summary": summary.strip(),
