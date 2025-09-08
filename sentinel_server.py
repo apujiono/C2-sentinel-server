@@ -1192,7 +1192,7 @@ def live_logs():
 @app.route('/beacon', methods=['POST'])
 def beacon():
     encrypted_data = request.form.get('data')
-    if not encrypted_
+    if not encrypted_data:
         return "Invalid", 400
 
     decrypted = xor_decrypt(encrypted_data)
